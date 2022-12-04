@@ -157,7 +157,7 @@ describe("Day 2 Part One", () => {
             expect(rockPaperScissors[2499]).toStrictEqual({ opponent: Choice.B, myself: Choice.Z })
         })
         describe("Part 1", () => {
-            describe("Find solution", () => {
+            it("should find solution", () => {
                 expect(calculateScoreSum(rockPaperScissors)).toBe(13446)
           })
         })

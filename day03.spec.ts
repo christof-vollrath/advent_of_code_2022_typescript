@@ -139,7 +139,7 @@ describe("Day 3 Part One", () => {
             expect(rucksacks.length).toBe(300)
         })
         describe("Part 1", () => {
-            describe("Find solution", () => {
+            it("should find solution", () => {
                 expect(calculateSumNumbers(calculateRucksackPriorities(rucksacks))).toBe(7872)
           })
         })

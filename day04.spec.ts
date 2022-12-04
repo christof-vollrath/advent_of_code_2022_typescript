@@ -34,8 +34,21 @@ function fullyContained(section: Section[]) {
         section[1].from >= section[0].from && section[1].to <= section[0].to
 }
 
+function count<T>(a: T[], f: ((e: T) => boolean)): number {
+    return a.filter(e => f(e)).length
+}
+
 function countFullyContained(sections: Section[][]) {
-    return sections.filter(s => fullyContained(s)).length
+    return count(sections, s => fullyContained(s))
+}
+
+function overlapping(section: Section[]) {
+    return section[0].to >= section[1].from && section[0].from <= section[1].from ||
+        section[1].to >= section[0].from && section[1].from <= section[0].from
+}
+
+function countOverlapping(sections: Section[][]) {
+    return count(sections, s => overlapping(s))
 }
 
 describe("Day 4 Part One", () => {
@@ -73,6 +86,15 @@ describe("Day 4 Part One", () => {
         it("should count fully contained", () => {
             expect(countFullyContained(sections)).toEqual(2)
         })
+        it("should find overlapping pairs", () => {
+            expect(overlapping([{ from: 5, to: 7}, { from: 7, to: 9 }])).toEqual(true)
+            expect(overlapping([{ from: 2, to: 8 }, { from: 3, to: 7}])).toEqual(true)
+            expect(overlapping([{ from: 2, to: 6 }, { from: 4, to: 8 }])).toEqual(true)
+            expect(overlapping([{ from: 2, to: 4 }, { from: 6, to: 8 }])).toEqual(false)
+        })
+        it("should count overlapping", () => {
+            expect(countOverlapping(sections)).toEqual(4)
+        })
     })
 
     describe("Exercise", () => {
@@ -82,9 +104,14 @@ describe("Day 4 Part One", () => {
             expect(sections.length).toBe(1000)
         })
         describe("Part 1", () => {
-            describe("Find solution", () => {
+            it("should find solution", () => {
                 expect(countFullyContained(sections)).toEqual(532)
           })
+        })
+        describe("Part 2", () => {
+            it("should find solution", () => {
+                expect(countOverlapping(sections)).toEqual(854)
+            })
         })
     })
 

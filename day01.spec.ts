@@ -111,12 +111,10 @@ describe("Day 01 Part One", () => {
             })
         })
         describe("Part 2", () => {
-            describe("Find solution", () => {
-                const max3 = max3Calories(sumCaloriesOfElves(inputNumbers))
-                it ("should find the solution", () => {
-                    expect(sumCalories(max3)).toEqual(200158)
-                });
-            })
+            const max3 = max3Calories(sumCaloriesOfElves(inputNumbers))
+            it ("should find the solution", () => {
+                expect(sumCalories(max3)).toEqual(200158)
+            });
         })
     })
 })
