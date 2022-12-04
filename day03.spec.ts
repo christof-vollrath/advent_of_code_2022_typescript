@@ -59,7 +59,7 @@ function groupBy3(strings: string[]) {
 }
 
 function intersectionOfStrings(strings: string[]) {
-    var result: string[] | null = null
+    let result: string[] | null = null
     for (const str of strings) {
         if (result === null) {
             result = string2array(str)
@@ -101,7 +101,7 @@ describe("Day 3 Part One", () => {
             expect(letterValue("a")).toStrictEqual(1)
             expect(letterValue("B")).toStrictEqual(28)
         });
-        it ("should groupy by 3", () => {
+        it ("should group by 3", () => {
             const simpleRucksacks = ["1", "2", "3", "4", "5", "6"]
             expect(groupBy3(simpleRucksacks)).toStrictEqual([["1", "2", "3"], ["4", "5", "6"]])
         })

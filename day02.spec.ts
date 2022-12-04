@@ -76,7 +76,7 @@ function calculateScoreSum(rockPaperScissors: RockPaperScissors[]) {
 }
 
 function findRightMove(rps: RockPaperScissors) {
-    var expectedResult;
+    let expectedResult;
     switch(rps.myself) {
         case Choice.X: expectedResult = RoundResult.LOOSE; break
         case Choice.Y: expectedResult = RoundResult.DRAW; break
