@@ -90,6 +90,15 @@ function craneDoAllMoves(steps: Move[], crates: string[][]) {
     for (const move of steps) craneMove(move, crates)
 }
 
+function crane9001Move(move: Move, crates: string[][]) {
+    const removedCrates = crates[move.from-1].slice(crates[move.from-1].length-move.nrCrates)
+    crates[move.from-1] = crates[move.from-1].slice(0, crates[move.from-1].length-move.nrCrates)
+    crates[move.to-1].push(...(removedCrates))
+}
+
+function crane9001DoAllMoves(steps: Move[], crates: string[][]) {
+    for (const move of steps) crane9001Move(move, crates)
+}
 function topCranes(crates: string[][]) {
     return crates.map(stack => stack[stack.length-1]).join("");
 }
@@ -160,7 +169,7 @@ move 1 from 1 to 2
                 ["P", "D", "N", "Z"],
             ])
         })
-        it("crane should do all moves", () => {
+        describe("crane should do all moves", () => {
             const [crates, steps] = parseCratesAndPlanedSteps(lines) // update crates, because they had been moved in the test before
             expect(crates).toStrictEqual([
                 ["Z", "N"],
@@ -173,9 +182,26 @@ move 1 from 1 to 2
                 ["M"],
                 ["P", "D", "N", "Z"],
             ])
+            it("should combine top crates", () => {
+                expect(topCranes(crates)).toBe("CMZ")
+            })
         })
-        it("should combine top cranes", () => {
-            expect(topCranes(crates)).toBe("CMZ")
+        describe("crane2 should do all moves", () => {
+            const [crates, steps] = parseCratesAndPlanedSteps(lines) // update crates, because they had been moved in the test before
+            expect(crates).toStrictEqual([
+                ["Z", "N"],
+                ["M", "C", "D"],
+                ["P"],
+            ])
+            crane9001DoAllMoves(steps, crates)
+            expect(crates).toStrictEqual([
+                ["M"],
+                ["C"],
+                ["P", "Z", "N", "D"],
+            ])
+            it("should combine top crates 2", () => {
+                expect(topCranes(crates)).toBe("MCD")
+            })
         })
 
     })
@@ -197,13 +223,13 @@ move 1 from 1 to 2
                 expect(topCranes(crates)).toBe("FWSHSPJWM")
             })
         })
-        /*
         describe("Part 2", () => {
+            const [crates, steps] = parseCratesAndPlanedSteps(lines) // fresh crates needed
             it("should find solution", () => {
-                expect(countOverlapping(sections)).toEqual(854)
+                crane9001DoAllMoves(steps, crates)
+                expect(topCranes(crates)).toBe("PWPWHGFZS")
             })
         })
-         */
     })
 
 })
