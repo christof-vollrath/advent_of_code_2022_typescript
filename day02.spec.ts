@@ -106,7 +106,7 @@ function calculateScoreSum2(rockPaperScissors: RockPaperScissors[]) {
 }
 
 
-describe("Day 2 Part One", () => {
+describe("Day 2", () => {
     const example = `
         A Y
         B X

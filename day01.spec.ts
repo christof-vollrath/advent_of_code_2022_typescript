@@ -51,7 +51,7 @@ function sumCalories(calories: number[]) {
     return sum
 }
 
-describe("Day 01 Part One", () => {
+describe("Day 01", () => {
     const example =
     `1000
     2000

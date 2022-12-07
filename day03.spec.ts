@@ -78,7 +78,7 @@ function calculateGroupPriorities(input: string[]) {
     })
 }
 
-describe("Day 3 Part One", () => {
+describe("Day 3", () => {
     const example = `
     vJrwpWtwJgWrhcsFMMfFFhFp
     jqHRNqRjqzjGDLGLrsFMfFZSrLrFZsSL

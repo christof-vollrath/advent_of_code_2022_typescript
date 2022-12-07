@@ -24,7 +24,7 @@ function findMarker(s: string, length: number = 4) {
     return NaN
 }
 
-describe("Day 6 Part One", () => {
+describe("Day 6", () => {
     const example = "mjqjpqmgbljsphdztnvjfqwrcgsmlb"
 
     describe("Example", () => {

@@ -51,7 +51,7 @@ function countOverlapping(sections: Section[][]) {
     return count(sections, s => overlapping(s))
 }
 
-describe("Day 4 Part One", () => {
+describe("Day 4", () => {
     const example = `
     2-4,6-8
     2-3,4-5

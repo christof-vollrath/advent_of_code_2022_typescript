@@ -103,7 +103,7 @@ function topCranes(crates: string[][]) {
     return crates.map(stack => stack[stack.length-1]).join("");
 }
 
-describe("Day 5 Part One", () => {
+describe("Day 5", () => {
     const example =
 `    [D]    
 [N] [C]    
