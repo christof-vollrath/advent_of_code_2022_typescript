@@ -19,13 +19,24 @@ function parseForrest(lines: string[]): number[][] {
     })
 }
 
-class Coordinates2 {
+export class Coordinates2 {
     x: number
     y: number
 
     constructor(x: number, y: number) {
         this.x = x
         this.y = y
+    }
+
+    add(coord: Coordinates2): Coordinates2 {
+        return new Coordinates2(this.x + coord.x, this.y + coord.y)
+    }
+
+    closeBy(coord: Coordinates2): boolean {
+        return Math.abs(this.x - coord.x) <=1 && Math.abs(this.y - coord.y) <= 1
+    }
+    toString() { // overwrite toString to have a proper hash function for Set<Coordinates2>
+        return `${this.x}-${this.y}}`
     }
 }
 
@@ -38,7 +49,7 @@ class Tree {
         this.height = height;
     }
 
-    toString() {
+    toString() { // overwrite toString to have a proper hash function for Set<Tree>
         return `${this.coord.x}-${this.coord.y}-${this.height}`
     }
 }
