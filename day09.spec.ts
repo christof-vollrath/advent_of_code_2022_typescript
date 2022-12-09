@@ -22,6 +22,8 @@ type Rope = {
     tail: Coordinates2
 }
 
+type LongRope = Coordinates2[]
+
 enum Direction {
     RIGHT = "R",
     LEFT = "L",
@@ -52,19 +54,19 @@ function calculateDelta(dir: Direction) {
     }
 }
 
-function moveOneStep(dir: Direction, rope: Rope, tailPath?: Coordinates2[]) {
-    function calculateDeltaTail(head: Coordinates2, tail: Coordinates2) {
-        if (head.x === tail.x && head.y < tail.y) return new Coordinates2(0, -1)
-        if (head.x === tail.x && head.y > tail.y) return new Coordinates2(0, 1)
-        if (head.x < tail.x && head.y === tail.y) return new Coordinates2(-1, 0)
-        if (head.x > tail.x && head.y === tail.y) return new Coordinates2(1, 0)
-        if (head.x < tail.x && head.y < tail.y) return new Coordinates2(-1, -1)
-        if (head.x < tail.x && head.y > tail.y) return new Coordinates2(-1, 1)
-        if (head.x > tail.x && head.y > tail.y) return new Coordinates2(1, 1)
-        if (head.x > tail.x && head.y < tail.y) return new Coordinates2(1, -1)
-        throw new Error(`No move found for head=${JSON.stringify(head)} tail=${JSON.stringify(tail)}`)
-    }
+function calculateDeltaTail(head: Coordinates2, tail: Coordinates2) {
+    if (head.x === tail.x && head.y < tail.y) return new Coordinates2(0, -1)
+    if (head.x === tail.x && head.y > tail.y) return new Coordinates2(0, 1)
+    if (head.x < tail.x && head.y === tail.y) return new Coordinates2(-1, 0)
+    if (head.x > tail.x && head.y === tail.y) return new Coordinates2(1, 0)
+    if (head.x < tail.x && head.y < tail.y) return new Coordinates2(-1, -1)
+    if (head.x < tail.x && head.y > tail.y) return new Coordinates2(-1, 1)
+    if (head.x > tail.x && head.y > tail.y) return new Coordinates2(1, 1)
+    if (head.x > tail.x && head.y < tail.y) return new Coordinates2(1, -1)
+    throw new Error(`No move found for head=${JSON.stringify(head)} tail=${JSON.stringify(tail)}`)
+}
 
+function moveOneStep(dir: Direction, rope: Rope, tailPath?: Coordinates2[]) {
     const deltaHead = calculateDelta(dir)
     rope.head = rope.head.add(deltaHead)
     if (! rope.tail.closeBy(rope.head)) { // have to move tail
@@ -90,6 +92,51 @@ function arrayToSet<T>(a: T[]): Collections.Set<T> {
     return result
 }
 
+function createLongRope(coordinates2: Coordinates2, size: number) {
+    const result: LongRope = []
+    for (let i = 0; i < size; i++) {
+        result.push(coordinates2)
+    }
+    return result
+}
+
+function moveLongRopeOneStep(dir: Direction, rope: LongRope, tailPath?: Coordinates2[]) {
+    const result: LongRope = []
+    let prevCoord: Coordinates2 | null = null
+    for (let i = 0; i < rope.length; i++) {
+        const coord = rope[i]
+        if (prevCoord === null) { // head
+            const moved = coord.add(calculateDelta(dir))
+            result.push(moved)
+            prevCoord = moved
+        } else {
+            let moved = coord
+            if (! coord.closeBy(prevCoord)) {
+                const deltaTail = calculateDeltaTail(prevCoord, coord)
+                moved = coord.add(deltaTail)
+            }
+            prevCoord = moved
+            result.push(moved)
+        }
+        if (tailPath && i === rope.length-1) tailPath.push(prevCoord)
+    }
+    return result
+}
+
+function moveLongRope(rope: Coordinates2[], step: Step, tailPath: Coordinates2[]) {
+    let result = rope
+    for (let i = 0; i < step.nr; i++) {
+        result = moveLongRopeOneStep(step.dir, result, tailPath);
+    }
+    return result
+}
+
+function followStepsLongRope(rope: Coordinates2[], steps: Step[], tailPath: Coordinates2[]) {
+    let result = rope
+    for (const step of steps) result = moveLongRope(result, step, tailPath)
+    return result
+}
+
 describe("Day 9", () => {
     const example = `
         R 4
@@ -100,6 +147,16 @@ describe("Day 9", () => {
         D 1
         L 5
         R 2`
+
+    const largerExample = `
+        R 5
+        U 8
+        L 8
+        D 3
+        R 17
+        D 10
+        L 25
+        U 20`
 
     describe("close by of coordinates", () => {
         it("should be close by", () => {
@@ -173,6 +230,36 @@ describe("Day 9", () => {
             const tailPathSet = arrayToSet(tailPath)
             expect(tailPathSet.size()).toBe(13)
         })
+        describe("follow tail path of a long rope with length 2 which is the same as a simple rope", () => {
+            const rope = createLongRope(new Coordinates2(0, 4), 2)
+            const tailPath: Coordinates2[] = []
+            followStepsLongRope(rope, steps, tailPath)
+            const tailPathSet = arrayToSet(tailPath)
+            expect(tailPathSet.size()).toBe(13)
+        })
+        describe("follow tail path of a long rope", () => {
+            const rope = createLongRope(new Coordinates2(0, 0), 10)
+            const tailPath: Coordinates2[] = []
+            followStepsLongRope(rope, steps, tailPath)
+            const tailPathSet = arrayToSet(tailPath)
+            expect(tailPathSet.size()).toBe(1) // Tail has not yet moved in example
+        })
+    })
+    describe("Larger example", () => {
+        const lines = parseLines(largerExample);
+        const steps = parseSteps(lines)
+        it("should have parsed steps", () => {
+            expect(steps.length).toBe(8)
+            expect(steps[0]).toStrictEqual({dir: Direction.RIGHT, nr: 5})
+            expect(steps[6]).toStrictEqual({dir: Direction.LEFT, nr: 25})
+        })
+        describe("follow tail path of a long rope", () => {
+            const rope = createLongRope(new Coordinates2(0, 0), 10)
+            const tailPath: Coordinates2[] = []
+            followStepsLongRope(rope, steps, tailPath)
+            const tailPathSet = arrayToSet(tailPath)
+            expect(tailPathSet.size()).toBe(36)
+        })
     })
 
     describe("Exercise", () => {
@@ -193,6 +280,11 @@ describe("Day 9", () => {
         })
         describe("Part 2", () => {
             it("should find solution", () => {
+                const rope = createLongRope(new Coordinates2(0, 0), 10)
+                const tailPath: Coordinates2[] = []
+                followStepsLongRope(rope, steps, tailPath)
+                const tailPathSet = arrayToSet(tailPath)
+                expect(tailPathSet.size()).toBe(2384)
             })
         })
     })
