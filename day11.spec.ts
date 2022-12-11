@@ -36,7 +36,7 @@ class Monkey {
     declare operation: MonkeyOperation
     activeCount = 0
 
-    executeOneRound(monkeys: Monkey[]) {
+    executeOneRound(monkeys: Monkey[], divideBy3: boolean = true) {
         function applyOperation(operation: MonkeyOperation, item: number) {
             if (operation instanceof MonkeyPlusOperation)
                 return item + operation.par
@@ -45,12 +45,13 @@ class Monkey {
             else return item * item
         }
 
+        console.log(JSON.stringify(this.items))
         const workingItems = [... this.items]
         this.items = [] // all items will be consumed in one round
         for (const item of workingItems) {
             this.activeCount++
             const nextLevel = applyOperation(this.operation, item)
-            const reliefNextLevel = Math.floor(nextLevel / 3)
+            const reliefNextLevel = divideBy3 ? Math.floor(nextLevel / 3) : nextLevel
             if (reliefNextLevel % this.divisibleBy === 0) monkeys[this.trueMonkey].items.push(reliefNextLevel)
             else  monkeys[this.falseMonkey].items.push(reliefNextLevel)
         }
@@ -111,10 +112,10 @@ function parseMonkeys(lines: string[]) {
     return result
 }
 
-function executeRounds(monkeys: Monkey[], rounds: number = 1) {
+function executeRounds(monkeys: Monkey[], rounds: number = 1, divideBy3: boolean = true) {
     for (let i = 0; i < rounds; i++) {
         for (const monkey of monkeys)
-            monkey.executeOneRound(monkeys)
+            monkey.executeOneRound(monkeys, divideBy3)
     }
 }
 
@@ -236,6 +237,15 @@ Monkey 3:
                 ])
                 expect(monkeys.map(m => m.activeCount)).toEqual([101, 95, 7, 105])
                 expect(calculateMonkeyLevel(monkeys)).toBe(10605)
+            })
+        })
+        describe("Execute rounds for all monkeys without divide by 3", () => {
+            const monkeys = parseMonkeys(lines)
+            it("should execute up to 1000 rounds for all monkeys", () => {
+                executeRounds(monkeys, 1, false)
+                expect(monkeys.map(m => m.activeCount)).toEqual([2, 4, 3, 6])
+                executeRounds(monkeys, 19, false)
+                expect(monkeys.map(m => m.activeCount)).toEqual([99, 97, 8, 103])
             })
         })
     })
