@@ -36,7 +36,7 @@ class Monkey {
     declare operation: MonkeyOperation
     activeCount = 0
 
-    executeOneRound(monkeys: Monkey[]) {
+    executeOneRound(monkeys: Monkey[], divideBy3: boolean = true, moduloReducer = 0) {
         function applyOperation(operation: MonkeyOperation, item: number) {
             if (operation instanceof MonkeyPlusOperation)
                 return item + operation.par
@@ -50,7 +50,8 @@ class Monkey {
         for (const item of workingItems) {
             this.activeCount++
             const nextLevel = applyOperation(this.operation, item)
-            const reliefNextLevel = Math.floor(nextLevel / 3)
+            const reliefNextLevel = divideBy3 ? Math.floor(nextLevel / 3) : nextLevel % moduloReducer
+                // need to use modulo arithmetic to keep the number low
             if (reliefNextLevel % this.divisibleBy === 0) monkeys[this.trueMonkey].items.push(reliefNextLevel)
             else  monkeys[this.falseMonkey].items.push(reliefNextLevel)
         }
@@ -111,10 +112,10 @@ function parseMonkeys(lines: string[]) {
     return result
 }
 
-function executeRounds(monkeys: Monkey[], rounds: number = 1) {
+function executeRounds(monkeys: Monkey[], rounds: number = 1, divideBy3: boolean = true, moduloReducer = 0) {
     for (let i = 0; i < rounds; i++) {
         for (const monkey of monkeys)
-            monkey.executeOneRound(monkeys)
+            monkey.executeOneRound(monkeys, divideBy3, moduloReducer)
     }
 }
 
@@ -126,7 +127,7 @@ function calculateMonkeyLevel(monkeys: Monkey[]) {
 describe("Day 11", () => {
 
     const example =
-`Monkey 0:
+        `Monkey 0:
   Starting items: 79, 98
   Operation: new = old * 19
   Test: divisible by 23
@@ -238,23 +239,43 @@ Monkey 3:
                 expect(calculateMonkeyLevel(monkeys)).toBe(10605)
             })
         })
+        describe("Execute rounds for all monkeys without divide by 3", () => {
+            const monkeys = parseMonkeys(lines)
+            const moduloReducer = 23 * 19 * 13 * 17 //  96_577 multiply of all divisible by numbers
+            it("should execute up to 1000 rounds for all monkeys", () => {
+                executeRounds(monkeys, 1, false, moduloReducer)
+                expect(monkeys.map(m => m.activeCount)).toEqual([2, 4, 3, 6])
+                executeRounds(monkeys, 19, false, moduloReducer)
+                expect(monkeys.map(m => m.activeCount)).toEqual([99, 97, 8, 103])
+                executeRounds(monkeys, 980, false, moduloReducer)
+                expect(monkeys.map(m => m.activeCount)).toEqual([5204, 4792, 199, 5192])
+                executeRounds(monkeys, 9000, false, moduloReducer)
+                expect(monkeys.map(m => m.activeCount)).toEqual([52166, 47830, 1938, 52013])
+                expect(calculateMonkeyLevel(monkeys)).toBe(2713310158)
+            })
+        })
     })
 
     describe("Exercise", () => {
         const input = readFileInput("inputDay11.txt")
         const lines = parseLines(input)
-        const monkeys = parseMonkeys(lines)
         it("should have parsed monkeys", () => {
+            const monkeys = parseMonkeys(lines)
             expect(monkeys.length).toBe(8)
         })
         describe("Part 1", () => {
             it("should find solution", () => {
+                const monkeys = parseMonkeys(lines)
                 executeRounds(monkeys, 20)
                 expect(calculateMonkeyLevel(monkeys)).toBe(55930)
             })
         })
         describe("Part 2", () => {
             it("should find solution", () => {
+                const monkeys = parseMonkeys(lines)
+                const moduloReducer = 7 * 17 * 11 * 13 * 19 * 2 * 5 * 3 //  9_699_690 multiply of all divisible by numbers
+                executeRounds(monkeys, 10000, false, moduloReducer)
+                expect(calculateMonkeyLevel(monkeys)).toBe(14636993466)
             })
         })
     })
