@@ -45,25 +45,38 @@ function sum(numbers: number[]) {
     return numbers.reduce((sum, current) => sum + current, 0)
 }
 
-class SignalStrengthMonitor {
-    signalStrengthLog: number[] = []
+interface CpuMonitor {
+    monitorLog: number[]
+
+    log(cmd: CpuInstruction, clock: number, registerX: number, signalStrength: number): void
+}
+
+class SampledSignalStrengthMonitor implements CpuMonitor{
+    monitorLog: number[] = []
 
     shouldLog(clock: number)  {
         return clock === 20 || (clock - 20) % 40 === 0
     }
-    logSignalStrength(cmd: CpuInstruction, clock: number, registerX: number, signalStrength: number) {
+    log(cmd: CpuInstruction, clock: number, registerX: number, signalStrength: number) {
         if (this.shouldLog(clock)) {
-            this.signalStrengthLog.push(signalStrength)
+            this.monitorLog.push(signalStrength)
         }
+    }
+}
+class DetailedRegisterXMonitor implements CpuMonitor{
+    monitorLog: number[] = []
+
+    log(cmd: CpuInstruction, clock: number, registerX: number, signalStrength: number) {
+        this.monitorLog.push(registerX)
     }
 }
 
 class Cpu {
     clock = 0
     registerX = 1
-    signalStrengthMonitor?: SignalStrengthMonitor
+    signalStrengthMonitor?: CpuMonitor
 
-    constructor(signalStrengthMonitor?: SignalStrengthMonitor) {
+    constructor(signalStrengthMonitor?: CpuMonitor) {
         this.signalStrengthMonitor = signalStrengthMonitor;
     }
 
@@ -73,7 +86,7 @@ class Cpu {
 
     logSignalStrength(instruction: CpuInstruction) {
         if (this.signalStrengthMonitor) {
-            this.signalStrengthMonitor.logSignalStrength(instruction, this.clock, this.registerX, this.getSignalStrength())
+            this.signalStrengthMonitor.log(instruction, this.clock, this.registerX, this.getSignalStrength())
         }
     }
     executeInstruction(instruction: CpuInstruction) {
@@ -92,6 +105,23 @@ class Cpu {
         for (const instruction of instructions)
             this.executeInstruction(instruction)
     }
+}
+
+function drawCrt(registerXLog: number[]) {
+    let crt: string[][] = []
+    for (let y = 0; y < 6; y++) {
+        const emptyRow: string[] = new Array(40)
+        emptyRow.fill(".")
+        crt.push(emptyRow)
+    }
+    for (let i = 0; i < registerXLog.length; i++) {
+        const registerX = registerXLog[i]
+        const x = i % 40
+        const y = Math.floor(i / 40)
+        if (registerX-1 <= x && x <= registerX+1) // 3 pixel sprite at position registerX and pixel overlap
+            crt[y][x] = '#'
+    }
+    return crt.map(row => row.join("")).join("\n")
 }
 
 describe("Day 10", () => {
@@ -266,11 +296,29 @@ describe("Day 10", () => {
             expect(cpu.registerX).toBe(-1)
         })
         it("should execute example", () => {
-            const signalStrengthMonitor = new SignalStrengthMonitor()
+            const signalStrengthMonitor = new SampledSignalStrengthMonitor()
             const cpu = new Cpu(signalStrengthMonitor)
             cpu.executeInstructions(instructions)
-            const s = sum(signalStrengthMonitor.signalStrengthLog)
+            const s = sum(signalStrengthMonitor.monitorLog)
             expect(s).toBe(13140)
+        })
+        describe("should log every cycle", () => {
+            const registerXMonitor = new DetailedRegisterXMonitor()
+            const cpu = new Cpu(registerXMonitor)
+            cpu.executeInstructions(instructions)
+            it("should have logged every cycle", () => {
+                expect(registerXMonitor.monitorLog.length).toBe(240)
+            })
+            it("should draw to CRT", () => {
+                const screen = drawCrt(registerXMonitor.monitorLog)
+                expect(screen).toBe(
+`##..##..##..##..##..##..##..##..##..##..
+###...###...###...###...###...###...###.
+####....####....####....####....####....
+#####.....#####.....#####.....#####.....
+######......######......######......####
+#######.......#######.......#######.....`)
+            })
         })
     })
 
@@ -283,15 +331,28 @@ describe("Day 10", () => {
         })
         describe("Part 1", () => {
             it("should find solution", () => {
-                const signalStrengthMonitor = new SignalStrengthMonitor()
+                const signalStrengthMonitor = new SampledSignalStrengthMonitor()
                 const cpu = new Cpu(signalStrengthMonitor)
                 cpu.executeInstructions(instructions)
-                const s = sum(signalStrengthMonitor.signalStrengthLog)
+                const s = sum(signalStrengthMonitor.monitorLog)
                 expect(s).toBe(15880)
             })
         })
         describe("Part 2", () => {
+            const registerXMonitor = new DetailedRegisterXMonitor()
+            const cpu = new Cpu(registerXMonitor)
+            cpu.executeInstructions(instructions)
             it("should find solution", () => {
+                const screen = drawCrt(registerXMonitor.monitorLog)
+                const expected = `
+                    ###..#.....##..####.#..#..##..####..##..
+                    #..#.#....#..#.#....#.#..#..#....#.#..#.
+                    #..#.#....#....###..##...#..#...#..#....
+                    ###..#....#.##.#....#.#..####..#...#.##.
+                    #....#....#..#.#....#.#..#..#.#....#..#.
+                    #....####..###.#....#..#.#..#.####..###.`
+                    .split("\n").map(l => l.trim()).filter(l => l.length > 0).join("\n")
+                expect(screen).toBe(expected)
             })
         })
     })
