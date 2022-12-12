@@ -57,16 +57,47 @@ function getNeighbours(coordinates2: Coordinates2, heightmap: number[][]) {
     return result
 }
 
-function getFilteredNeighbours(coordinates2: Coordinates2, heightmap: number[][]) {
+function getFilteredNeighbours(coordinates2: Coordinates2, heightmap: number[][], neighboursFilter: NeighboursFilter = neighboursFilter1) {
     const neighbours = getNeighbours(coordinates2, heightmap)
-    return neighbours.filter(neighbour => {
-        const heightDifference = heightmap[neighbour.y][neighbour.x] - heightmap[coordinates2.y][coordinates2.x]
-        //return heightDifference >= 0 && heightDifference <= 1
-        return heightDifference <= 1
-    });
+    return neighbours.filter(neighbour => neighboursFilter(neighbour, coordinates2, heightmap));
 }
 
-function findPath(heightmap: number[][], start: Coordinates2, target: Coordinates2) {
+function neighboursFilter1(neighbour: Coordinates2, curr: Coordinates2, heightmap: number[][]) {
+    const heightDifference = heightmap[neighbour.y][neighbour.x] - heightmap[curr.y][curr.x]
+    return heightDifference <= 1
+}
+
+function neighboursFilter2(neighbour: Coordinates2, curr: Coordinates2, heightmap: number[][]) {
+    const heightDifference = heightmap[neighbour.y][neighbour.x] - heightmap[curr.y][curr.x]
+    return heightDifference >= -1
+}
+
+
+interface TargetChecker {
+    checkTarget(curr: Coordinates2, heightmap: number[][]): boolean
+}
+
+class TargetChecker1 implements TargetChecker {
+    target: Coordinates2
+
+    constructor(target: Coordinates2) {
+        this.target = target
+    }
+
+    checkTarget(curr: Coordinates2, _: number[][]): boolean {
+        return isEqual(curr, this.target)
+    }
+}
+
+class TargetChecker2 implements TargetChecker {
+    checkTarget(curr: Coordinates2, heightmap: number[][]): boolean {
+        return heightmap[curr.y][curr.x] === 1
+    }
+}
+
+type NeighboursFilter = (neighbour: Coordinates2, curr: Coordinates2, heightmap: number[][]) => boolean
+
+function findPath(heightmap: number[][], start: Coordinates2, targetChecker: TargetChecker, neighboursFilter: NeighboursFilter = neighboursFilter1) {
     const debugHeightmap = heightmapToChars(heightmap)
     const foundPaths = new Collections.Dictionary<Coordinates2, Coordinates2[]>()
     foundPaths.setValue(start, [])
@@ -76,10 +107,10 @@ function findPath(heightmap: number[][], start: Coordinates2, target: Coordinate
         const nextPaths = new Collections.Dictionary<Coordinates2, Coordinates2[]>()
         for (const coord of paths.keys()) {
             const path = paths.getValue(coord)!
-            const neighbours = getFilteredNeighbours(coord, heightmap)
+            const neighbours = getFilteredNeighbours(coord, heightmap, neighboursFilter)
             for (const neighbour of neighbours) {
                 const pathToNeighbour = [...path, neighbour]
-                if (isEqual(neighbour, target)) {
+                if (targetChecker.checkTarget(neighbour, heightmap)) {
                     return pathToNeighbour;
                 } else {
                     const foundPathToNeighbour = foundPaths.getValue(neighbour)
@@ -174,7 +205,7 @@ vwxyz`)
                 const example = "SbcdefghijklmnopqrstuvwxyE"
                 const lines = parseLines(example)
                 const mapWithStartAndTarget = parseHeightmap(lines)
-                const path = findPath(mapWithStartAndTarget.heightmap, mapWithStartAndTarget.start, mapWithStartAndTarget.target)
+                const path = findPath(mapWithStartAndTarget.heightmap, mapWithStartAndTarget.start, new TargetChecker1(mapWithStartAndTarget.target))
                 expect(path.length).toBe(25)
                 expect(path[0]).toStrictEqual(new Coordinates2(1, 0))
                 expect(path[24]).toStrictEqual(new Coordinates2(25, 0))
@@ -186,7 +217,7 @@ vwxyz`)
                 `
                 const lines = parseLines(example)
                 const mapWithStartAndTarget = parseHeightmap(lines)
-                const path = findPath(mapWithStartAndTarget.heightmap, mapWithStartAndTarget.start, mapWithStartAndTarget.target)
+                const path = findPath(mapWithStartAndTarget.heightmap, mapWithStartAndTarget.start, new TargetChecker1(mapWithStartAndTarget.target))
                 expect(path.length).toBe(25)
                 expect(path[0]).toStrictEqual(new Coordinates2(0, 1))
                 expect(path[23]).toStrictEqual(new Coordinates2(16, 0))
@@ -194,11 +225,17 @@ vwxyz`)
             })
         })
         describe("find path in example", () => {
-            const path = findPath(heightmap, start, target)
+            const path = findPath(heightmap, start, new TargetChecker1(target))
             expect(path.length).toBe(31)
             expect(path[0]).toStrictEqual(new Coordinates2(0, 1))
             expect(path[29]).toStrictEqual(new Coordinates2(target.x - 1, target.y))
             expect(path[30]).toStrictEqual(target)
+        })
+        describe("find reverse path in example for part 2", () => {
+            const path = findPath(heightmap, target, new TargetChecker2(), neighboursFilter2)
+            expect(path.length).toBe(29)
+            expect(path[0]).toStrictEqual(new Coordinates2(target.x - 1, target.y))
+            expect(path[28]).toStrictEqual(new Coordinates2(0, 4))
         })
     })
 
@@ -214,13 +251,15 @@ vwxyz`)
         })
         describe("Part 1", () => {
             it("should find solution", () => {
-                const path = findPath(heightmap, start, target)
+                const path = findPath(heightmap, start, new TargetChecker1(target))
                 expect(path.length).toBe(484)
                 expect(path[483]).toStrictEqual(target)
             })
         })
         describe("Part 2", () => {
             it("should find solution", () => {
+                const path = findPath(heightmap, target, new TargetChecker2(), neighboursFilter2)
+                expect(path.length).toBe(478)
             })
         })
     })
