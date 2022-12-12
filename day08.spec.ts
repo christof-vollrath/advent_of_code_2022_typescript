@@ -36,7 +36,7 @@ export class Coordinates2 {
         return Math.abs(this.x - coord.x) <=1 && Math.abs(this.y - coord.y) <= 1
     }
     toString() { // overwrite toString to have a proper hash function for Set<Coordinates2>
-        return `${this.x}-${this.y}}`
+        return `${this.x}-${this.y}`
     }
 }
 
