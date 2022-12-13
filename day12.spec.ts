@@ -3,7 +3,7 @@
 import {readFileSync} from "fs"
 import {Coordinates2} from "./day08.spec";
 import * as Collections from "typescript-collections"
-import {isEqual} from "lodash";
+import {isEqual} from "lodash"
 
 export function readFileInput(path: string) {
     return readFileSync(path, 'utf8')

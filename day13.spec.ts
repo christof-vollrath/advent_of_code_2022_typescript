@@ -1,6 +1,7 @@
 // Advent of code 2022 - day 13
 
 import {readFileSync} from "fs"
+import {isEqual} from "lodash"
 
 export function readFileInput(path: string) {
     return readFileSync(path, 'utf8')
@@ -53,12 +54,41 @@ function checkPacketsOrder(param: any[][]): boolean | undefined {
     return undefined
 }
 
+function flattenList(list: any[][]) {
+    const result: any[] = []
+    for (const e of list) {
+        result.push(...e)
+    }
+    return result
+}
 function sumPairsInRightOrder(pairs: any[][]) {
     let sum = 0
     for (let i = 1; i <= pairs.length; i++) {
         if (checkPacketsOrder(pairs[i-1])) sum += i
     }
     return sum
+}
+
+function comparePacketsOrder(a: any, b: any) {
+    const check = checkPacketsOrder([a, b])
+    switch(check) {
+        case true: return -1
+        case false: return 1
+        case undefined: return 0
+    }
+}
+
+function findIndexesList(sortedPackets: any[], searchFor: number[][][]) {
+    const result: number[] = []
+    for (const search of searchFor) {
+        for (let i = 1; i <= sortedPackets.length; i++) {
+            if (isEqual(sortedPackets[i-1], search)) {
+                result.push(i)
+                break
+            }
+        }
+    }
+    return result
 }
 
 describe("Day 13", () => {
@@ -146,6 +176,60 @@ describe("Day 13", () => {
                expect(sumPairsInRightOrder(packetPairs)).toBe(13)
            })
         });
+
+        describe("flatten", () => {
+            it("should flatten some list", () => {
+                expect(flattenList([[[1, 2], [2, 3]], [[1, [2]], [[2, [3], [4]]] ]])).toStrictEqual([ [1, 2], [2, 3], [1, [2]], [[2, [3], [4]]] ])
+            })
+            it("should flatten example", () => {
+                expect(flattenList(packetPairs)).toStrictEqual([
+                    [1,1,3,1,1],
+                    [1,1,5,1,1],
+                    [[1],[2,3,4]],
+                    [[1],4],
+                    [9],
+                    [[8,7,6]],
+                    [[4,4],4,4],
+                    [[4,4],4,4,4],
+                    [7,7,7,7],
+                    [7,7,7],
+                    [],
+                    [3],
+                    [[[]]],
+                    [[]],
+                    [1,[2,[3,[4,[5,6,7]]]],8,9],
+                    [1,[2,[3,[4,[5,6,0]]]],8,9]
+                ])
+            })
+        })
+        describe("sort example with dividers", () => {
+            const packetsWithDividers = flattenList(packetPairs)
+            packetsWithDividers.push([[2]], [[6]])
+            const sortedPackets = packetsWithDividers.sort((a, b) => comparePacketsOrder(a, b))
+            expect(sortedPackets).toStrictEqual([
+                [],
+                [[]],
+                [[[]]],
+                [1,1,3,1,1],
+                [1,1,5,1,1],
+                [[1],[2,3,4]],
+                [1,[2,[3,[4,[5,6,0]]]],8,9],
+                [1,[2,[3,[4,[5,6,7]]]],8,9],
+                [[1],4],
+                [[2]],
+                [3],
+                [[4,4],4,4],
+                [[4,4],4,4,4],
+                [[6]],
+                [7,7,7],
+                [7,7,7,7],
+                [[8,7,6]],
+                [9]
+            ])
+            const [d1, d2] = findIndexesList(sortedPackets, [ [[2]], [[6]]] )
+            expect([d1, d2]).toStrictEqual([10, 14])
+            expect(d1 * d2).toBe(140)
+        })
     })
 
     describe("Exercise", () => {
@@ -165,6 +249,11 @@ describe("Day 13", () => {
         })
         describe("Part 2", () => {
             it("should find solution", () => {
+                const packetsWithDividers = flattenList(packetPairs)
+                packetsWithDividers.push([[2]], [[6]])
+                const sortedPackets = packetsWithDividers.sort((a, b) => comparePacketsOrder(a, b))
+                const [d1, d2] = findIndexesList(sortedPackets, [ [[2]], [[6]]] )
+                expect(d1 * d2).toBe(22344)
             })
         })
     })
