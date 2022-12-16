@@ -38,6 +38,10 @@ export class Coordinates2 {
     toString() { // overwrite toString to have a proper hash function for Set<Coordinates2>
         return `${this.x}-${this.y}`
     }
+
+    manhattanDistance(coord: Coordinates2) {
+        return Math.abs(this.x - coord.x) + Math.abs(this.y - coord.y);
+    }
 }
 
 class Tree {
