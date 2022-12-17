@@ -91,6 +91,30 @@ function coveredPositions(sensorAndBeacons: Coordinates2[][], row: number) {
     return covered - findBeaconsY(row, sensorAndBeacons).length
 }
 
+function findFreePosition(sensorAndBeacons: Coordinates2[][], max: number) {
+    for (let row = 0; row <= max; row++) {
+        const rawRanges = sensorAndBeacons.map(sb => manhattanYRange(sb, row))
+        if (rawRanges.length === 0) continue
+        const ranges = joinRanges(rawRanges)
+        const nonFullyCoveringRanges = ranges.filter(r => r[0] > 0 || r[1] < max)
+        if (nonFullyCoveringRanges.length == 0) continue
+        const fittingRanges = nonFullyCoveringRanges.filter(r => r[0] <= max && r[1] >= 0)
+        if (fittingRanges.length > 2) {
+            throw new Error(`no unique free position found ${JSON.stringify(fittingRanges)}`)
+        }
+        if (fittingRanges.length > 0) {
+            const fittingRange = fittingRanges[0]
+            if (fittingRange[0] > 0) throw new Error(`no gap between ranges ${JSON.stringify(fittingRanges)}`)
+            return new Coordinates2(fittingRange[1] + 1, row)
+        }
+    }
+    throw new Error(`no unique free position found in rows up to ${max}`)
+}
+
+function calculateTuningFrequency(position: Coordinates2) {
+    return position.x * 4000000 + position.y
+}
+
 describe("Day 14", () => {
 
     const example = `
@@ -166,6 +190,12 @@ describe("Day 14", () => {
             const coveredWithoutBeacons = coveredPositions(sensorAndBeacons, 10);
             expect(coveredWithoutBeacons).toBe(26)
         })
+        it("should find the only free position", () => {
+            const freePosition = findFreePosition(sensorAndBeacons, 20)
+            expect(freePosition).toStrictEqual(new Coordinates2(14, 11))
+            const tuningFrequency = calculateTuningFrequency(freePosition)
+            expect(tuningFrequency).toBe(56000011)
+        })
     })
 
     describe("Exercise", () => {
@@ -184,6 +214,9 @@ describe("Day 14", () => {
         })
         describe("Part 2", () => {
             it("should find solution", () => {
+                const freePosition = findFreePosition(sensorAndBeacons, 4000000)
+                const tuningFrequency = calculateTuningFrequency(freePosition)
+                expect(tuningFrequency).toBe(12518502636475)
             })
         })
     })
