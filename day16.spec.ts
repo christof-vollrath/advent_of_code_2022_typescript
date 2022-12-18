@@ -1,7 +1,7 @@
 // Advent of code 2022 - day 16
 
 import {readFileSync} from "fs"
-import {Set} from "typescript-collections";
+import {Dictionary, Set} from "typescript-collections";
 
 export function readFileInput(path: string) {
     return readFileSync(path, 'utf8')
@@ -130,10 +130,21 @@ class PathThroughTunnels {
     }
 }
 
-function generateAllPaths(valvesWithTunnels: ValvesWithTunnels) {
+function generateAllPaths(valvesWithTunnels: ValvesWithTunnels, deep: boolean = true) {
+    let lowerLimit = 0
+    if (deep) { // try to find an upper limit
+        const path = generateAllPaths(valvesWithTunnels, false)
+        if (path) {
+            // @ts-ignore
+            lowerLimit = path.getForecastTotal() // Flat search might not give the optimal result but can be used as a lower limit
+            //console.log(`lowerLimit=${lowerLimit}`)
+        }
+    }
     let completedPath: PathThroughTunnels | null = null
     const startPath = new PathThroughTunnels(valvesWithTunnels)
     let openPaths: PathThroughTunnels[] = [startPath]
+    let bestPaths = new Dictionary<string, PathThroughTunnels>()
+    bestPaths.setValue(startPath.currentValve.name, startPath)
     while (openPaths.length > 0) {
         const nextOpenPaths: PathThroughTunnels[] = []
         for (const path of openPaths) {
@@ -152,26 +163,47 @@ function generateAllPaths(valvesWithTunnels: ValvesWithTunnels) {
                             console.log(`new completedPath=${nextPath.printPath()}`)
                         }
                     } else {
-                        if (!completedPath || nextPath.getOptimisticForecastTotal() > completedPath.getForecastTotal()) {
-                            nextOpenPaths.push(nextPath)
-                            //console.log(`added to nextOpenPaths=${nextPath.printPath()}`)
+                        if (deep) {
+                            if (nextPath.getOptimisticForecastTotal() > lowerLimit && (!completedPath || (nextPath.getOptimisticForecastTotal() > completedPath.getForecastTotal()))) {
+                                nextOpenPaths.push(nextPath)
+                                //console.log(`added to nextOpenPaths=${nextPath.printPath()}`)
+                            }
+                        } else {
+                            const alreadyFound = bestPaths.getValue(valveWithState.name)
+                            if (! alreadyFound || alreadyFound.getForecastTotal() < nextPath.getForecastTotal()) {
+                                nextOpenPaths.push(nextPath)
+                            }
+                        }
+                    }
+                    if (! deep) {
+                        const alreadyFound = bestPaths.getValue(valveWithState.name)
+                        if (! alreadyFound || alreadyFound.getForecastTotal() < nextPath.getForecastTotal()) {
+                            bestPaths.setValue(valveWithState.name, nextPath)
                         }
                     }
                 }
                 nextPath = new PathThroughTunnels(valvesWithTunnels, path.minute, path.pressure, path.totalPressureMinutes, path.currentValve, path.path, path.openValves)
                 valveWithState = new ValveWithState(next, false)
                 nextPath.move(next, valveWithState.open) // Don't have to check for all valves opened because no new one is opened
-                if (!completedPath || nextPath.getOptimisticForecastTotal() > completedPath.getForecastTotal()) {
-                    nextOpenPaths.push(nextPath)
-                    //console.log(`added to nextOpenPaths=${nextPath.printPath()}`)
+                if (deep) {
+                    if (nextPath.getOptimisticForecastTotal() > lowerLimit && (!completedPath || (nextPath.getOptimisticForecastTotal() > completedPath.getForecastTotal()))) {
+                        nextOpenPaths.push(nextPath)
+                        //console.log(`added to nextOpenPaths=${nextPath.printPath()}`)
+                    }
+                } else {
+                    const alreadyFound = bestPaths.getValue(valveWithState.name)
+                    if (! alreadyFound || alreadyFound.getForecastTotal() < nextPath.getForecastTotal()) {
+                        bestPaths.setValue(valveWithState.name, nextPath)
+                        nextOpenPaths.push(nextPath)
+                    }
                 }
             }
         }
         openPaths = nextOpenPaths
         console.log(`nextOpenPaths=${nextOpenPaths.length}`)
-        //console.log(`nextOpenPaths=${nextOpenPaths.length}\n${nextOpenPaths.map(p => p.printPath()).join("\n")}\n`)
+        console.log(`nextOpenPaths=${nextOpenPaths.length}\n${nextOpenPaths.map(p => p.printPath()).join("\n")}\n`)
         // @ts-ignore
-        //console.log(`completedPath:\n${completedPath?.printPath()}\n`)
+        console.log(`completedPath:\n${completedPath?.printPath()}\n`)
     }
     return completedPath
 }
@@ -433,14 +465,29 @@ describe("Day 16", () => {
                 // @ts-ignore
                 expect(bestPath!.getForecastTotal()).toEqual(565)
             })
+            it("should not look deep", () => {
+                const valvesWithTunnels = parseValvesWithTunnels(lines)
+                const bestPath = generateAllPaths(valvesWithTunnels, false)
+                // @ts-ignore
+                expect(bestPath?.path).toEqual(["AA", "DD", "EE"])
+
+                // @ts-ignore
+                expect(bestPath!.getForecastTotal()).toEqual(548)
+            })
         })
         it("should generate all paths from AA and find the best", () => {
             const bestPath = generateAllPaths(valvesWithTunnels)
             // @ts-ignore
             expect(bestPath!.getForecastTotal()).toEqual(1651)
         })
+        it("should generate all paths from AA but can not find the best solution when not looking deep", () => {
+            const bestPath = generateAllPaths(valvesWithTunnels, false)
+            // @ts-ignore
+            expect(bestPath!.getForecastTotal()).toBeLessThan(1651)
+            // @ts-ignore
+            expect(bestPath!.getForecastTotal()).toEqual(1647)
+        })
     })
-/*
     describe("Exercise", () => {
         const input = readFileInput("inputDay16.txt")
         const lines = parseLines(input)
@@ -449,11 +496,11 @@ describe("Day 16", () => {
             expect(lines.length).toBe(51)
             expect(valvesWithTunnels.map.size).toBe(51)
         })
-        const valvesWithTunnels = parseValvesWithTunnels(lines)
         describe("Part 1", () => {
             it("should find solution", () => {
-                const bestPath = generateAllPaths(valvesWithTunnels, 30)
-                expect(bestPath!.getProjectedTotal()).toEqual(1651)
+                const bestPath = generateAllPaths(valvesWithTunnels, false)
+                // @ts-ignore
+                expect(bestPath!.getForecastTotal()).toEqual(1651)
             })
         })
         describe("Part 2", () => {
@@ -461,6 +508,4 @@ describe("Day 16", () => {
             })
         })
     })
-
- */
 })
