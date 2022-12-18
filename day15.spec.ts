@@ -115,7 +115,7 @@ function calculateTuningFrequency(position: Coordinates2) {
     return position.x * 4000000 + position.y
 }
 
-describe("Day 14", () => {
+describe("Day 15", () => {
 
     const example = `
         Sensor at x=2, y=18: closest beacon is at x=-2, y=15
