@@ -107,7 +107,7 @@ class PathThroughTunnels {
         }
     }
 
-    getForecastTotal() {
+    getForecastTotal() { // how would be the totalPressure when nothing changes anymore and 30 mins are completed
         return this.totalPressureMinutes + this.pressure * (30 - this.minute)
     }
 
@@ -116,7 +116,17 @@ class PathThroughTunnels {
     }
 
     getOptimisticForecastTotal() {
-        // optimistic means, in the next round all valves could be opened
+        // optimistic means, in the next round the biggest valves will be opened as can be opened until 30 minutes
+        const valves = [...this.valvesWithTunnels.map.values()]
+        const bestValves = valves.filter(v => !this.openValves.contains(v.name))
+            .sort((v1, v2) => v2.rate - v1.rate)
+        const openableValves = bestValves.slice(0, (30 - this.minute) / 2)
+        let sum = 0
+        for (let i = 0; i < openableValves.length; i++) {
+            sum += bestValves[i].rate * (30 - this.minute - i * 2)
+        }
+        return sum + this.getForecastTotal()
+        /*
         if (this.minute > 30) return 0
         let sum = 0
         for (const valve of this.valvesWithTunnels.map.values()) {
@@ -127,6 +137,8 @@ class PathThroughTunnels {
         }
         const pressureOfAllUnopenedValves = sum * (30 - this.minute)
         return pressureOfAllUnopenedValves + this.getForecastTotal()
+
+         */
     }
 }
 
@@ -370,7 +382,7 @@ describe("Day 16", () => {
                 const valvesWithTunnels = parseValvesWithTunnels(lines)
                 const pathThroughTunnels = new PathThroughTunnels(valvesWithTunnels)
                 expect(pathThroughTunnels.getForecastTotal()).toEqual(0)
-                expect(pathThroughTunnels.getOptimisticForecastTotal()).toEqual(87)
+                expect(pathThroughTunnels.getOptimisticForecastTotal()).toEqual(85)
                 pathThroughTunnels.move("DD", true)
                 expect(pathThroughTunnels.minute).toEqual(3)
                 expect(pathThroughTunnels.totalPressureMinutes).toEqual(1)
@@ -405,10 +417,10 @@ describe("Day 16", () => {
                 // verify best path
                 const valvesWithTunnels = parseValvesWithTunnels(lines)
                 const pathThroughTunnels = new PathThroughTunnels(valvesWithTunnels)
-                expect(pathThroughTunnels.getOptimisticForecastTotal()).toEqual(174)
+                expect(pathThroughTunnels.getOptimisticForecastTotal()).toEqual(166)
                 pathThroughTunnels.move("DD", true)
                 expect(pathThroughTunnels.openValves.toArray()).toEqual(["DD"])
-                expect(pathThroughTunnels.getOptimisticForecastTotal()).toEqual(163)
+                expect(pathThroughTunnels.getOptimisticForecastTotal()).toEqual(159)
                 pathThroughTunnels.move("EE", true)
                 expect(pathThroughTunnels.openValves.toArray()).toEqual(["DD", "EE"])
                 pathThroughTunnels.move("FF", true)
@@ -436,7 +448,7 @@ describe("Day 16", () => {
                 // verify best path
                 const valvesWithTunnels = parseValvesWithTunnels(lines)
                 const pathThroughTunnels = new PathThroughTunnels(valvesWithTunnels)
-                expect(pathThroughTunnels.getOptimisticForecastTotal()).toEqual(609)
+                expect(pathThroughTunnels.getOptimisticForecastTotal()).toEqual(607)
                 pathThroughTunnels.move("DD", true)
                 expect(pathThroughTunnels.getOptimisticForecastTotal()).toEqual(568)
                 pathThroughTunnels.move("EE", true)
@@ -447,9 +459,9 @@ describe("Day 16", () => {
                 // verify best path
                 const valvesWithTunnels = parseValvesWithTunnels(lines)
                 const pathThroughTunnels = new PathThroughTunnels(valvesWithTunnels)
-                expect(pathThroughTunnels.getOptimisticForecastTotal()).toEqual(609)
+                expect(pathThroughTunnels.getOptimisticForecastTotal()).toEqual(607)
                 pathThroughTunnels.move("DD", false)
-                expect(pathThroughTunnels.getOptimisticForecastTotal()).toEqual(588)
+                expect(pathThroughTunnels.getOptimisticForecastTotal()).toEqual(586)
                 pathThroughTunnels.move("EE", true)
                 expect(pathThroughTunnels.getOptimisticForecastTotal()).toEqual(566)
                 pathThroughTunnels.move("DD", true) // it's better to open DD later, so that we have the pressure of EE earlier
