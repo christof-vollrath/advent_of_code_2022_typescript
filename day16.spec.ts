@@ -539,6 +539,11 @@ describe("Day 16", () => {
                 console.log(paths.map(p => p.printPath(30)).join("\n"))
             })
         })
+        it("should generate all paths from AA and find the best for 26 minutes", () => {
+            const bestPath = generateAllPaths(valvesWithTunnels, 26)
+            // @ts-ignore
+            expect(bestPath!.getForecastTotal(26)).toEqual(1327)
+        })
     })
     describe("Exercise", () => {
         const input = readFileInput("inputDay16.txt")
@@ -551,8 +556,11 @@ describe("Day 16", () => {
         describe("Part 1", () => {
             it("should find solution", () => {
                 const bestPath = generateAllPaths(valvesWithTunnels,  30, false)
+                // @ts-ignore
                 console.log(bestPath?.printPath(30))
+                // @ts-ignore
                 expect(bestPath?.path).toStrictEqual(["AA", "PL", "EA", "AX", "GE", "QN", "LC", "GW", "GS", "KB", "IT", "WB", "NA", "XE", "XX", "WF", "OO", "UD", "PM", "NR", "YD"])
+                // @ts-ignore
                 expect(bestPath!.getForecastTotal(30)).toEqual(1775)
                 /*
                 const bestPath2 = generateAllPaths(valvesWithTunnels, 30)
@@ -571,9 +579,6 @@ describe("Day 16", () => {
                 })
             })
             it("should find solution", () => {
-                const bestPath = generateAllPaths(valvesWithTunnels, 30, false)
-                // @ts-ignore
-                expect(bestPath!.getForecastTotal(30)).toEqual(1775)
             })
         })
     })
