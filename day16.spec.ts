@@ -90,6 +90,7 @@ class PathThroughTunnels {
     }
 
     move(valveName: string, openValve: boolean) {
+        this.cachedOptimisticForecastTotal = undefined
         const valve = this.valvesWithTunnels.map.get(valveName)
         if (!valve) throw new Error(`Illegal valve ${valveName}`)
         this.currentValve = new ValveWithState(valveName, openValve)
@@ -107,49 +108,44 @@ class PathThroughTunnels {
         }
     }
 
-    getForecastTotal() { // how would be the totalPressure when nothing changes anymore and 30 mins are completed
-        return this.totalPressureMinutes + this.pressure * (30 - this.minute)
+    getForecastTotal(totalMinutes: number) { // how would be the totalPressure when nothing changes anymore and 30 min are completed
+        return this.totalPressureMinutes + this.pressure * (totalMinutes - this.minute)
     }
 
-    printPath() {
-        return this.path.map(name => name + (this.openValves.contains(name) ? "*" : " ")).join(", ") + `(${this.getForecastTotal()} ${this.getOptimisticForecastTotal()})`
+    printPath(totalMinutes: number) {
+        return this.path.map(name => name + (this.openValves.contains(name) ? "*" : " ")).join(", ") + `(${this.getForecastTotal(totalMinutes)} ${this.getOptimisticForecastTotal(totalMinutes)})`
     }
 
-    getOptimisticForecastTotal() {
-        // optimistic means, in the next round the biggest valves will be opened as can be opened until 30 minutes
-        const valves = [...this.valvesWithTunnels.map.values()]
-        const bestValves = valves.filter(v => !this.openValves.contains(v.name))
-            .sort((v1, v2) => v2.rate - v1.rate)
-        const openableValves = bestValves.slice(0, (30 - this.minute) / 2)
-        let sum = 0
-        for (let i = 0; i < openableValves.length; i++) {
-            sum += bestValves[i].rate * (30 - this.minute - i * 2)
-        }
-        return sum + this.getForecastTotal()
-        /*
-        if (this.minute > 30) return 0
-        let sum = 0
-        for (const valve of this.valvesWithTunnels.map.values()) {
-            const rate = valve.rate
-            if (! this.openValves.contains(valve.name)) {
-                sum += rate
+    cachedOptimisticForecastTotal: number | undefined = undefined
+    cachedOptimisticForecastTotalMinutes: number | undefined = undefined
+
+    getOptimisticForecastTotal(totalMinutes: number) {
+        if (this.cachedOptimisticForecastTotal && this.cachedOptimisticForecastTotalMinutes === totalMinutes) return this.cachedOptimisticForecastTotal
+        else {
+            // optimistic means, in the next rounds the biggest valves will be opened as can be opened until 30 minutes
+            const valves = [...this.valvesWithTunnels.map.values()]
+            const bestValves = valves.filter(v => !this.openValves.contains(v.name))
+                .sort((v1, v2) => v2.rate - v1.rate)
+            const openableValves = bestValves.slice(0, (totalMinutes - this.minute) / 2)
+            let sum = 0
+            for (let i = 0; i < openableValves.length; i++) {
+                sum += bestValves[i].rate * (totalMinutes - this.minute - i * 2)
             }
+            this.cachedOptimisticForecastTotal = sum + this.getForecastTotal(totalMinutes)
+            this.cachedOptimisticForecastTotalMinutes = totalMinutes
+            return this.cachedOptimisticForecastTotal
         }
-        const pressureOfAllUnopenedValves = sum * (30 - this.minute)
-        return pressureOfAllUnopenedValves + this.getForecastTotal()
-
-         */
     }
 }
 
-function generateAllPaths(valvesWithTunnels: ValvesWithTunnels, deep: boolean = true) {
+function generateAllPaths(valvesWithTunnels: ValvesWithTunnels, totalMinutes: number, deep: boolean = true) {
     let lowerLimit = 0
     if (deep) { // try to find an upper limit
-        const path = generateAllPaths(valvesWithTunnels, false)
+        const path = generateAllPaths(valvesWithTunnels, totalMinutes, false)
         if (path) {
             // @ts-ignore
-            lowerLimit = path.getForecastTotal() // Flat search might not give the optimal result but can be used as a lower limit
-            console.log(`lowerLimit=${lowerLimit}`)
+            lowerLimit = path.getForecastTotal(totalMinutes) // Flat search might not give the optimal result but can be used as a lower limit
+            //console.log(`lowerLimit=${lowerLimit}`)
         }
     }
     let finalPath: PathThroughTunnels | null = null
@@ -169,26 +165,26 @@ function generateAllPaths(valvesWithTunnels: ValvesWithTunnels, deep: boolean = 
                 if (nextValve!.rate > 0) { // can be opened
                     valveWithState = new ValveWithState(next, true)
                     nextPath.move(next, valveWithState.open)
-                    if (finalPath === null || finalPath.getForecastTotal() < nextPath.getForecastTotal()) {
+                    if (finalPath === null || finalPath.getForecastTotal(totalMinutes) < nextPath.getForecastTotal(totalMinutes)) {
                         finalPath = nextPath
-                        console.log(`new finalPath=${nextPath.printPath()}`)
+                        //console.log(`new finalPath=${nextPath.printPath()}`)
                         nextOpenPaths.push(nextPath)
                     } else {
                         if (deep) {
-                            if (nextPath.getOptimisticForecastTotal() > lowerLimit && (!finalPath || (nextPath.getOptimisticForecastTotal() > finalPath.getForecastTotal()))) {
+                            if (nextPath.getOptimisticForecastTotal(totalMinutes) > lowerLimit && (!finalPath || (nextPath.getOptimisticForecastTotal(totalMinutes) > finalPath.getForecastTotal(totalMinutes)))) {
                                 //console.log(`added to nextOpenPaths=${nextPath.printPath()}`)
                                 nextOpenPaths.push(nextPath)
                             }
                         } else {
                             const alreadyFound = bestPaths.getValue(valveWithState.name)
-                            if (! alreadyFound || alreadyFound.getForecastTotal() < nextPath.getForecastTotal()) {
+                            if (! alreadyFound || alreadyFound.getForecastTotal(totalMinutes) < nextPath.getForecastTotal(totalMinutes)) {
                                 nextOpenPaths.push(nextPath)
                             }
                         }
                     }
                     if (! deep) {
                         const alreadyFound = bestPaths.getValue(valveWithState.name)
-                        if (! alreadyFound || alreadyFound.getForecastTotal() < nextPath.getForecastTotal()) {
+                        if (! alreadyFound || alreadyFound.getForecastTotal(totalMinutes) < nextPath.getForecastTotal(totalMinutes)) {
                             bestPaths.setValue(valveWithState.name, nextPath)
                         }
                     }
@@ -197,13 +193,13 @@ function generateAllPaths(valvesWithTunnels: ValvesWithTunnels, deep: boolean = 
                 valveWithState = new ValveWithState(next, false)
                 nextPath.move(next, valveWithState.open) // Don't have to check for all valves opened because no new one is opened
                 if (deep) {
-                    if (nextPath.getOptimisticForecastTotal() > lowerLimit && (!finalPath || (nextPath.getOptimisticForecastTotal() > finalPath.getForecastTotal()))) {
+                    if (nextPath.getOptimisticForecastTotal(totalMinutes) > lowerLimit && (!finalPath || (nextPath.getOptimisticForecastTotal(totalMinutes) > finalPath.getForecastTotal(totalMinutes)))) {
                         nextOpenPaths.push(nextPath)
                         //console.log(`added to nextOpenPaths=${nextPath.printPath()}`)
                     }
                 } else {
                     const alreadyFound = bestPaths.getValue(valveWithState.name)
-                    if (! alreadyFound || alreadyFound.getForecastTotal() < nextPath.getForecastTotal()) {
+                    if (! alreadyFound || alreadyFound.getForecastTotal(totalMinutes) < nextPath.getForecastTotal(totalMinutes)) {
                         bestPaths.setValue(valveWithState.name, nextPath)
                         nextOpenPaths.push(nextPath)
                     }
@@ -211,13 +207,51 @@ function generateAllPaths(valvesWithTunnels: ValvesWithTunnels, deep: boolean = 
             }
         }
         openPaths = nextOpenPaths
-        console.log(`nextOpenPaths=${nextOpenPaths.length}`)
-        console.log(`nextOpenPaths=${nextOpenPaths.length}\n${nextOpenPaths.map(p => p.printPath()).join("\n")}\n`)
+        //console.log(`nextOpenPaths=${nextOpenPaths.length}`)
+        //console.log(`nextOpenPaths=${nextOpenPaths.length}\n${nextOpenPaths.map(p => p.printPath()).join("\n")}\n`)
         // @ts-ignore
-        console.log(`finalPath:\n${finalPath?.printPath()}\n`)
+        //console.log(`finalPath:\n${finalPath?.printPath()}\n`)
     }
     return finalPath
 }
+
+function findPaths(valvesWithTunnels: ValvesWithTunnels) {
+    let alreadyFound = new Set<string>()
+    const startPath = new PathThroughTunnels(valvesWithTunnels)
+    let currentPaths: PathThroughTunnels[] = [startPath]
+    alreadyFound.add("AA")
+    const paths: PathThroughTunnels[] = [startPath]
+    while (currentPaths.length > 0) {
+        const nextPaths: PathThroughTunnels[] = []
+        for (const path of currentPaths) {
+            const nextValves = valvesWithTunnels.map.get(path.currentValve.name)!.connected
+            for (const next of nextValves) {
+                if (!alreadyFound.contains(next)) {
+                    let nextPath = new PathThroughTunnels(valvesWithTunnels, path.minute, path.pressure, path.totalPressureMinutes, path.currentValve, path.path, path.openValves)
+                    const valveWithState = new ValveWithState(next, true)
+                    nextPath.move(next, valveWithState.open)
+                    alreadyFound.add(next)
+                    paths.push(nextPath)
+                    nextPaths.push(nextPath)
+                }
+            }
+        }
+        currentPaths = nextPaths
+    }
+    return paths.sort((path1, path2) => {
+        for (let i = 0; i < Math.min(path1.path.length, path2.path.length); i++) {
+            const name1 = path1.path[i], name2 = path2.path[i]
+            if (name1 === undefined) return -1
+            else if (name2 === undefined) return 1
+            else {
+                const compareResult = name1.localeCompare(name2)
+                if (compareResult !== 0) return compareResult
+            }
+        }
+        return 0
+    })
+}
+
 /**
  * Some findings about the problem:
  * - sometimes it makes sense to open a valve later, because a stronger valve could then open earlier
@@ -259,7 +293,7 @@ describe("Day 16", () => {
             expect(pathThroughTunnels.openValves.size()).toEqual(0)
             expect(pathThroughTunnels.minute).toEqual(1)
             expect(pathThroughTunnels.pressure).toEqual(0)
-            expect(pathThroughTunnels.getForecastTotal()).toEqual(0)
+            expect(pathThroughTunnels.getForecastTotal(30)).toEqual(0)
             expect(pathThroughTunnels.currentValve!.name).toEqual("AA")
             pathThroughTunnels.move("DD", true)
             expect(pathThroughTunnels.minute).toEqual(3)
@@ -303,13 +337,13 @@ describe("Day 16", () => {
             expect(pathThroughTunnels.minute).toEqual(25)
             expect(pathThroughTunnels.pressure).toEqual(81)
             expect(pathThroughTunnels.openValves.size()).toEqual(6)
-            expect(pathThroughTunnels.getForecastTotal()).toEqual(1651)
+            expect(pathThroughTunnels.getForecastTotal(30)).toEqual(1651)
             pathThroughTunnels.move("CC", false)
             pathThroughTunnels.move("CC", false)
             pathThroughTunnels.move("CC", false)
             pathThroughTunnels.move("CC", false)
             pathThroughTunnels.move("CC", false)
-            expect(pathThroughTunnels.getForecastTotal()).toEqual(1651)
+            expect(pathThroughTunnels.getForecastTotal(30)).toEqual(1651)
             expect(pathThroughTunnels.minute).toEqual(30)
             expect(pathThroughTunnels.pressure).toEqual(81)
             expect(pathThroughTunnels.totalPressureMinutes).toEqual(1651)
@@ -353,20 +387,20 @@ describe("Day 16", () => {
                 // verify best path
                 const valvesWithTunnels = parseValvesWithTunnels(lines)
                 const pathThroughTunnels = new PathThroughTunnels(valvesWithTunnels)
-                expect(pathThroughTunnels.getForecastTotal()).toEqual(0)
-                expect(pathThroughTunnels.getOptimisticForecastTotal()).toEqual(580)
+                expect(pathThroughTunnels.getForecastTotal(30)).toEqual(0)
+                expect(pathThroughTunnels.getOptimisticForecastTotal(30)).toEqual(580)
                 pathThroughTunnels.move("DD", true)
                 expect(pathThroughTunnels.openValves.toArray()).toEqual(["DD"])
-                expect(pathThroughTunnels.getForecastTotal()).toEqual(560)
-                expect(pathThroughTunnels.getOptimisticForecastTotal()).toEqual(560)
+                expect(pathThroughTunnels.getForecastTotal(30)).toEqual(560)
+                expect(pathThroughTunnels.getOptimisticForecastTotal(30)).toEqual(560)
             })
             it("should solve most simplest case with only one connected valve", () => {
                 const valvesWithTunnels = parseValvesWithTunnels(lines)
-                const bestPath = generateAllPaths(valvesWithTunnels)
+                const bestPath = generateAllPaths(valvesWithTunnels, 30)
                 // @ts-ignore
                 expect(bestPath?.path).toEqual(["AA", "DD"])
                 // @ts-ignore
-                expect(bestPath!.getForecastTotal()).toEqual(560)
+                expect(bestPath!.getForecastTotal(30)).toEqual(560)
             })
         })
         describe("generate all paths from AA and find the best case with three linearly connected valves", () => {
@@ -380,28 +414,28 @@ describe("Day 16", () => {
                 // verify best path
                 const valvesWithTunnels = parseValvesWithTunnels(lines)
                 const pathThroughTunnels = new PathThroughTunnels(valvesWithTunnels)
-                expect(pathThroughTunnels.getForecastTotal()).toEqual(0)
-                expect(pathThroughTunnels.getOptimisticForecastTotal()).toEqual(85)
+                expect(pathThroughTunnels.getForecastTotal(30)).toEqual(0)
+                expect(pathThroughTunnels.getOptimisticForecastTotal(30)).toEqual(85)
                 pathThroughTunnels.move("DD", true)
                 expect(pathThroughTunnels.minute).toEqual(3)
                 expect(pathThroughTunnels.totalPressureMinutes).toEqual(1)
                 expect(pathThroughTunnels.openValves.toArray()).toEqual(["DD"])
-                expect(pathThroughTunnels.getForecastTotal()).toEqual(28)
-                expect(pathThroughTunnels.getOptimisticForecastTotal()).toEqual(82)
+                expect(pathThroughTunnels.getForecastTotal(30)).toEqual(28)
+                expect(pathThroughTunnels.getOptimisticForecastTotal(30)).toEqual(82)
                 pathThroughTunnels.move("EE", true)
                 expect(pathThroughTunnels.minute).toEqual(5)
                 expect(pathThroughTunnels.totalPressureMinutes).toEqual(5)
                 expect(pathThroughTunnels.openValves.toArray()).toEqual(["DD", "EE"])
-                expect(pathThroughTunnels.getForecastTotal()).toEqual(80)
-                expect(pathThroughTunnels.getOptimisticForecastTotal()).toEqual(80)
+                expect(pathThroughTunnels.getForecastTotal(30)).toEqual(80)
+                expect(pathThroughTunnels.getOptimisticForecastTotal(30)).toEqual(80)
             })
             it("should solve simple case with linearly connected valves", () => {
                 const valvesWithTunnels = parseValvesWithTunnels(lines)
-                const bestPath = generateAllPaths(valvesWithTunnels)
+                const bestPath = generateAllPaths(valvesWithTunnels, 30)
                 // @ts-ignore
                 expect(bestPath?.path).toEqual(["AA", "DD", "EE"])
                 // @ts-ignore
-                expect(bestPath!.getForecastTotal()).toEqual(80)
+                expect(bestPath!.getForecastTotal(30)).toEqual(80)
             })
         })
         describe("generate all paths from AA and find the best case with four linearly connected valves", () => {
@@ -416,24 +450,24 @@ describe("Day 16", () => {
                 // verify best path
                 const valvesWithTunnels = parseValvesWithTunnels(lines)
                 const pathThroughTunnels = new PathThroughTunnels(valvesWithTunnels)
-                expect(pathThroughTunnels.getOptimisticForecastTotal()).toEqual(166)
+                expect(pathThroughTunnels.getOptimisticForecastTotal(30)).toEqual(166)
                 pathThroughTunnels.move("DD", true)
                 expect(pathThroughTunnels.openValves.toArray()).toEqual(["DD"])
-                expect(pathThroughTunnels.getOptimisticForecastTotal()).toEqual(159)
+                expect(pathThroughTunnels.getOptimisticForecastTotal(30)).toEqual(159)
                 pathThroughTunnels.move("EE", true)
                 expect(pathThroughTunnels.openValves.toArray()).toEqual(["DD", "EE"])
                 pathThroughTunnels.move("FF", true)
                 expect(pathThroughTunnels.openValves.toArray()).toEqual(["DD", "EE", "FF"])
-                expect(pathThroughTunnels.getForecastTotal()).toEqual(152)
-                expect(pathThroughTunnels.getOptimisticForecastTotal()).toEqual(152)
+                expect(pathThroughTunnels.getForecastTotal(30)).toEqual(152)
+                expect(pathThroughTunnels.getOptimisticForecastTotal(30)).toEqual(152)
             })
             it("should solve simple case with linearly connected valves", () => {
                 const valvesWithTunnels = parseValvesWithTunnels(lines)
-                const bestPath = generateAllPaths(valvesWithTunnels)
+                const bestPath = generateAllPaths(valvesWithTunnels, 30)
                 // @ts-ignore
                 expect(bestPath?.path).toEqual(["AA", "DD", "EE", "FF"])
                 // @ts-ignore
-                expect(bestPath!.getForecastTotal()).toEqual(152)
+                expect(bestPath!.getForecastTotal(30)).toEqual(152)
             })
         })
         describe("generate all paths from AA and find the best case where it is best to open one valve later", () => {
@@ -447,56 +481,63 @@ describe("Day 16", () => {
                 // verify best path
                 const valvesWithTunnels = parseValvesWithTunnels(lines)
                 const pathThroughTunnels = new PathThroughTunnels(valvesWithTunnels)
-                expect(pathThroughTunnels.getOptimisticForecastTotal()).toEqual(607)
+                expect(pathThroughTunnels.getOptimisticForecastTotal(30)).toEqual(607)
                 pathThroughTunnels.move("DD", true)
-                expect(pathThroughTunnels.getOptimisticForecastTotal()).toEqual(568)
+                expect(pathThroughTunnels.getOptimisticForecastTotal(30)).toEqual(568)
                 pathThroughTunnels.move("EE", true)
-                expect(pathThroughTunnels.getForecastTotal()).toEqual(548)
-                expect(pathThroughTunnels.getOptimisticForecastTotal()).toEqual(548)
+                expect(pathThroughTunnels.getForecastTotal(30)).toEqual(548)
+                expect(pathThroughTunnels.getOptimisticForecastTotal(30)).toEqual(548)
             })
             it("should calculate the forecast for the optimal path", () => {
                 // verify best path
                 const valvesWithTunnels = parseValvesWithTunnels(lines)
                 const pathThroughTunnels = new PathThroughTunnels(valvesWithTunnels)
-                expect(pathThroughTunnels.getOptimisticForecastTotal()).toEqual(607)
+                expect(pathThroughTunnels.getOptimisticForecastTotal(30)).toEqual(607)
                 pathThroughTunnels.move("DD", false)
-                expect(pathThroughTunnels.getOptimisticForecastTotal()).toEqual(586)
+                expect(pathThroughTunnels.getOptimisticForecastTotal(30)).toEqual(586)
                 pathThroughTunnels.move("EE", true)
-                expect(pathThroughTunnels.getOptimisticForecastTotal()).toEqual(566)
+                expect(pathThroughTunnels.getOptimisticForecastTotal(30)).toEqual(566)
                 pathThroughTunnels.move("DD", true) // it's better to open DD later, so that we have the pressure of EE earlier
-                expect(pathThroughTunnels.getForecastTotal()).toEqual(565)
-                expect(pathThroughTunnels.getOptimisticForecastTotal()).toEqual(565)
+                expect(pathThroughTunnels.getForecastTotal(30)).toEqual(565)
+                expect(pathThroughTunnels.getOptimisticForecastTotal(30)).toEqual(565)
             })
             it("should solve case where it is best to open one valve later", () => {
                 const valvesWithTunnels = parseValvesWithTunnels(lines)
-                const bestPath = generateAllPaths(valvesWithTunnels)
+                const bestPath = generateAllPaths(valvesWithTunnels, 30)
                 // @ts-ignore
                 expect(bestPath?.path).toEqual(["AA", "DD", "EE", "DD"])
 
                 // @ts-ignore
-                expect(bestPath!.getForecastTotal()).toEqual(565)
+                expect(bestPath!.getForecastTotal(30)).toEqual(565)
             })
             it("should not look deep", () => {
                 const valvesWithTunnels = parseValvesWithTunnels(lines)
-                const bestPath = generateAllPaths(valvesWithTunnels, false)
+                const bestPath = generateAllPaths(valvesWithTunnels, 30, false)
                 // @ts-ignore
                 expect(bestPath?.path).toEqual(["AA", "DD", "EE"])
 
                 // @ts-ignore
-                expect(bestPath!.getForecastTotal()).toEqual(548)
+                expect(bestPath!.getForecastTotal(30)).toEqual(548)
             })
         })
         it("should generate all paths from AA and find the best", () => {
-            const bestPath = generateAllPaths(valvesWithTunnels)
+            const bestPath = generateAllPaths(valvesWithTunnels, 30)
             // @ts-ignore
-            expect(bestPath!.getForecastTotal()).toEqual(1651)
+            expect(bestPath!.getForecastTotal(30)).toEqual(1651)
         })
         it("should generate all paths from AA but can not find the best solution when not looking deep", () => {
-            const bestPath = generateAllPaths(valvesWithTunnels, false)
+            const bestPath = generateAllPaths(valvesWithTunnels, 30, false)
             // @ts-ignore
-            expect(bestPath!.getForecastTotal()).toBeLessThan(1651)
+            expect(bestPath!.getForecastTotal(30)).toBeLessThan(1651)
             // @ts-ignore
-            expect(bestPath!.getForecastTotal()).toEqual(1647)
+            expect(bestPath!.getForecastTotal(30)).toEqual(1647)
+        })
+        describe("understand paths more", () => {
+            it("should find path to every valve", () => {
+                const paths = findPaths(valvesWithTunnels)
+                expect(paths.length).toBe(10)
+                console.log(paths.map(p => p.printPath(30)).join("\n"))
+            })
         })
     })
     describe("Exercise", () => {
@@ -509,22 +550,30 @@ describe("Day 16", () => {
         })
         describe("Part 1", () => {
             it("should find solution", () => {
-                /* Takes very long (> 30 min)
-                const bestPath = generateAllPaths(valvesWithTunnels, false)
+                const bestPath = generateAllPaths(valvesWithTunnels,  30, false)
+                console.log(bestPath?.printPath(30))
+                expect(bestPath?.path).toStrictEqual(["AA", "PL", "EA", "AX", "GE", "QN", "LC", "GW", "GS", "KB", "IT", "WB", "NA", "XE", "XX", "WF", "OO", "UD", "PM", "NR", "YD"])
+                expect(bestPath!.getForecastTotal(30)).toEqual(1775)
+                /*
+                const bestPath2 = generateAllPaths(valvesWithTunnels, 30)
                 // @ts-ignore
-                expect(bestPath!.getForecastTotal()).toEqual(1775)
-                const bestPath2 = generateAllPaths(valvesWithTunnels)
-                // @ts-ignore
-                expect(bestPath2!.getForecastTotal()).toEqual(1775)
-                // Strangely enough a deep search where valves might be opened later has the same score than opening every valve when passing
+                expect(bestPath2!.getForecastTotal(30)).toEqual(1775)
+                // Strangely enough a deep search where valves might be opened later has the same score as opening every valve when passing
                  */
             })
         })
         describe("Part 2", () => {
+            describe("explore valves and tunnel", ()  => {
+                it ("should find path to every valve", () => {
+                    const paths = findPaths(valvesWithTunnels)
+                    console.log(paths.map(p => p.printPath(30)).join("\n"))
+                    expect(paths.length).toBe(51)
+                })
+            })
             it("should find solution", () => {
-                const bestPath = generateAllPaths(valvesWithTunnels, false)
+                const bestPath = generateAllPaths(valvesWithTunnels, 30, false)
                 // @ts-ignore
-                expect(bestPath!.getForecastTotal()).toEqual(1775)
+                expect(bestPath!.getForecastTotal(30)).toEqual(1775)
             })
         })
     })
