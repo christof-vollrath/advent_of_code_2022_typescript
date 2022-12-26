@@ -2,6 +2,7 @@
 
 import {readFileSync} from "fs"
 import {Coordinates2} from "./day08.spec";
+import {Dictionary} from "typescript-collections";
 
 export function readFileInput(path: string) {
     return readFileSync(path, 'utf8')
@@ -12,17 +13,22 @@ export function parseLines(input: string) {
 }
 
 const shapesString = [
+//1
 `@@@@`,
+// 2
 `.@.
 @@@
 .@.`,
+// 3
 `..@
 ..@
 @@@`,
+// 4
 `@
 @
 @
 @`,
+// 5
 `@@
 @@`
     ]
@@ -36,9 +42,14 @@ class ShapeAndPosition {
         this.shape = shape;
         this.coord = coord;
     }
+
+    getHeightFromBottom(chamber: Chamber) {
+        return chamber.height - this.coord.y
+    }
 }
 class Chamber {
     currentShape: ShapeAndPosition | null = null
+    recentShape: ShapeAndPosition | null = null
     height: number = 0
     cave: string[][] = []
     readonly width = 7
@@ -86,11 +97,18 @@ class Chamber {
         return result
     }
 
-    toString() {
-        const result: string[] = []
+    toString(printHeight = false) {
+        return this.caveToString(this.cave, printHeight);
+    }
 
-        for (let y = 0; y < this.cave.length; y++)
-            result.push("|" + this.printRow(y, this.cave) + "|")
+    private caveToString(cave: string[][], printHeight: boolean = false) {
+        const result: string[] = []
+        for (let y = 0; y < cave.length; y++) {
+            let line = "|" + this.printRow(y, cave) + "|"
+            if (printHeight) line += ` ${cave.length - y}`
+            result.push(line)
+
+        }
         result.push("+-------+")
         return result.join("\n")
     }
@@ -117,6 +135,7 @@ class Chamber {
                     const y = yOffset + this.currentShape.coord.y
                     this.cave[y][x] = "#"
                 }
+        this.recentShape = this.currentShape
         this.currentShape = null
     }
 
@@ -124,7 +143,7 @@ class Chamber {
         if (! this.currentShape) throw new Error("No current shape to drop")
         const newCoord = new Coordinates2(this.currentShape.coord.x, this.currentShape.coord.y + 1)
         const nextShape = new ShapeAndPosition(this.currentShape.shape, newCoord)
-        const stoppedMoving = this.shapeReachedButtom(nextShape) || this.shapeReachedOtherShape(nextShape);
+        const stoppedMoving = this.shapeReachedBottom(nextShape) || this.shapeReachedOtherShape(nextShape);
         if (stoppedMoving) {
             this.placeCurrentShapeInCave()
             return false
@@ -134,7 +153,7 @@ class Chamber {
         }
     }
 
-    private shapeReachedButtom(shape: ShapeAndPosition) {
+    private shapeReachedBottom(shape: ShapeAndPosition) {
         return shape.coord.y + shape.shape.length > this.cave.length // bottom reached
     }
 
@@ -168,30 +187,127 @@ class Chamber {
     }
 }
 
-function runCaveSimulation(shapes: string[][][], chamber: Chamber, number: number, windPattern: string) {
-    let shapeIndex = 0
-    let windIndex = 0
-    let rockNumber = 0
-    do { // handle shapes
-        const shape = shapes[shapeIndex]
-        shapeIndex++
-        if (shapeIndex >= shapes.length) shapeIndex = 0
-        chamber.addShape(shape)
-        //console.log(chamber.toString())
-        let blocked = false
-        while (! blocked) { // drop shape
-            const wind = windPattern[windIndex]
-            if (wind === "<") chamber.moveCurrentShapeLeft()
-            else if (wind === ">") chamber.moveCurrentShapeRight()
-            else throw new Error(`Illegal wind ${wind} at index ${windIndex}`)
-            windIndex++
-            if (windIndex >= windPattern.length) windIndex = 0
-            blocked = !chamber.dropCurrentShape1Unit()
-            //console.log(`blocked=${blocked}`)
-            //console.log(chamber.toString())
+interface CaveMonitor {
+    monitor(rockNumber: number, shapeIndex: any, wind: string, windIndex: any, blocked: boolean, shape: ShapeAndPosition): boolean
+}
+
+class CaveSimulator {
+    shapes: string[][][]
+    chamber: Chamber
+    windPattern: string
+    shapeIndex = 0
+    windIndex = 0
+    caveMonitor: CaveMonitor | null
+
+    constructor(shapes: string[][][], chamber: Chamber, windPattern: string, caveMonitor: CaveMonitor | null = null) {
+        this.shapes = shapes;
+        this.chamber = chamber;
+        this.windPattern = windPattern;
+        this.caveMonitor = caveMonitor
+    }
+
+    runCaveSimulation(number: number) {
+        this.shapeIndex = 0
+        this.windIndex = 0
+        let rockNumber = 0
+        do { // handle shapes
+            const shape = this.shapes[this.shapeIndex]
+            this.chamber.addShape(shape)
+            let blocked = false
+            while (! blocked) { // drop shape
+                const wind = this.windPattern[this.windIndex]
+                if (wind === "<") this.chamber.moveCurrentShapeLeft()
+                else if (wind === ">") this.chamber.moveCurrentShapeRight()
+                else throw new Error(`Illegal wind ${wind} at index ${this.windIndex}`)
+                blocked = !this.chamber.dropCurrentShape1Unit()
+                if (this.caveMonitor) {
+                    let shape
+                    if (blocked) shape = this.chamber.recentShape
+                    else shape = this.chamber.currentShape
+                    if (this.caveMonitor.monitor(rockNumber, this.shapeIndex, wind, this.windIndex, blocked, shape!)) return // break simulation
+                }
+                this.windIndex++
+                if (this.windIndex >= this.windPattern.length) this.windIndex = 0
+            }
+            this.shapeIndex++
+            if (this.shapeIndex >= this.shapes.length) this.shapeIndex = 0
+            rockNumber++
+        } while (rockNumber < number)
+    }
+}
+
+function findLoop(shapes: string[][][], input: string) {
+    let chamber = new Chamber()
+    class WindIndexAndX {
+        windIndex: number
+        x: number
+        constructor(windIndex: number, x: number) {
+            this.windIndex = windIndex;
+            this.x = x;
         }
-        rockNumber++
-    } while (rockNumber < number)
+        toString() { return `${this.windIndex}-${this.x}`}
+    }
+    class RockNumberAndHeight {
+        constructor(rockNumber: number, height: number) {
+            this.rockNumber = rockNumber;
+            this.height = height;
+        }
+        rockNumber: number
+        height: number
+    }
+    const occurrenceDictionary = new Dictionary<WindIndexAndX, RockNumberAndHeight>()
+    let first: RockNumberAndHeight | undefined
+    let repeated: RockNumberAndHeight | undefined
+    class FindRepeatMonitor implements CaveMonitor {
+        constructor(occurrenceDictionary: Dictionary<WindIndexAndX, RockNumberAndHeight>) {
+            this.occurrenceDictionary = occurrenceDictionary;
+        }
+        occurrenceDictionary: Dictionary<WindIndexAndX, RockNumberAndHeight>
+        monitor(rockNumber: number, shapeIndex: any, wind: string, windIndex: any, blocked: boolean, shape: ShapeAndPosition): boolean {
+            //if (shapeIndex === 0 && blocked) console.log(`rockNumber=${rockNumber} height=${chamber.getFilledHeight()} shapeIndex=${shapeIndex} windIndex=${windIndex} blocked=${blocked} shape=${JSON.stringify(shape)}`)
+            if (blocked && shapeIndex === 0 && chamber.getFilledHeight() === shape.getHeightFromBottom(chamber)) {
+                // Find loops which start when shape 0 reached the end and no other shape is higher (which would complicate calculation)
+                const found = occurrenceDictionary.getValue(new WindIndexAndX(windIndex, shape.coord.x))
+                first = found
+                repeated = new RockNumberAndHeight(rockNumber, chamber.getFilledHeight())
+                if (found) {
+                    //console.log(`Found again first:${found} now: ${rockNumber} shapeIndex=${shapeIndex} windIndex=${windIndex} wind=${wind} x=${shape.coord.x} `)
+                    return true
+                }
+                else {
+                    occurrenceDictionary.setValue(new WindIndexAndX(windIndex, shape.coord.x), new RockNumberAndHeight(rockNumber, chamber.getFilledHeight()))
+                }
+            }
+            return false
+        }
+    }
+    const findRepeatMonitor = new FindRepeatMonitor(occurrenceDictionary)
+    let caveSimulator = new CaveSimulator(shapes, chamber, input, findRepeatMonitor)
+    caveSimulator.runCaveSimulation(100_000)
+    if (! first) throw new Error("No loop found")
+    //console.log(`firstOccurrence=${first?.rockNumber} firstHeight=${first?.height} repeatedOccurrence=${repeated?.rockNumber} repeatedHeight=${repeated?.height}}`)
+    return {
+        loopLength: repeated!.rockNumber - first!.rockNumber,
+        loopHeight: repeated!.height - first!.height,
+        loopStart: first!.rockNumber
+
+    }
+}
+function loopOptimizedSimulation(shapes: string[][][], input: string, rocks: number) {
+    const { loopLength, loopHeight, loopStart } = findLoop(shapes, input)
+    let heightOfAllLoops = 0
+    let remaining = rocks - loopStart
+    if (loopStart + loopLength < rocks) { // optimize calculation by using loops
+        const nrLoops = Math.floor((rocks - loopStart) / loopLength)
+        remaining = (rocks - loopStart) % loopLength
+        heightOfAllLoops = nrLoops * loopHeight
+    }
+    // find out additional rocks and there heights
+    const chamber = new Chamber()
+    const caveSimulator = new CaveSimulator(shapes, chamber, input)
+    caveSimulator.runCaveSimulation(loopStart + remaining)
+    const additionalHeight = chamber.getFilledHeight()
+    return heightOfAllLoops + additionalHeight
 }
 
 describe("Day 17", () => {
@@ -205,7 +321,7 @@ describe("Day 17", () => {
     describe("Example", () => {
         describe("Initialising shapes", () => {
             const lines = parseLines(example)
-            it("should have parsed 1 lineq", () => {
+            it("should have parsed 1 line", () => {
                 expect(lines.length).toBe(1)
             })
             it("should have parsed shapes", () => {
@@ -243,7 +359,7 @@ describe("Day 17", () => {
 +-------+`
                     )
                 })
-                it("should move should not change shape position when moving to the right and border is readched", () => {
+                it("should move should not change shape position when moving to the right and border is reached", () => {
                     chamber.moveCurrentShapeRight()
                     expect(chamber.toString()).toBe(
                         `|...@@@@|
@@ -356,7 +472,8 @@ describe("Day 17", () => {
         describe("run some rounds", () => {
             it ("should run one rounds", () => {
                 const chamber = new Chamber()
-                runCaveSimulation(shapes, chamber, 1, example)
+                const caveSimulator = new CaveSimulator(shapes, chamber, example)
+                caveSimulator.runCaveSimulation(1)
                 expect(chamber.getFilledHeight()).toBe(1)
                 expect(chamber.toString()).toBe(
                     `|.......|
@@ -368,7 +485,8 @@ describe("Day 17", () => {
             })
             it ("should run two rounds", () => {
                 const chamber = new Chamber()
-                runCaveSimulation(shapes, chamber, 2, example)
+                const caveSimulator = new CaveSimulator(shapes, chamber, example)
+                caveSimulator.runCaveSimulation(2)
                 expect(chamber.getFilledHeight()).toBe(4)
                 expect(chamber.toString()).toBe(
 `|.......|
@@ -383,7 +501,8 @@ describe("Day 17", () => {
             })
             it ("should run ten rounds", () => {
                 const chamber = new Chamber()
-                runCaveSimulation(shapes, chamber, 10, example)
+                const caveSimulator = new CaveSimulator(shapes, chamber, example)
+                caveSimulator.runCaveSimulation(10)
                 expect(chamber.toString()).toBe(
 `|.......|
 |.......|
@@ -414,8 +533,39 @@ describe("Day 17", () => {
         describe("run example", () => {
             it ("should run 2022 rocks", () => {
                 const chamber = new Chamber()
-                runCaveSimulation(shapes, chamber, 2022, example)
+                const caveSimulator = new CaveSimulator(shapes, chamber, example)
+                caveSimulator.runCaveSimulation(2022)
                 expect(chamber.getFilledHeight()).toBe(3068)
+            })
+        })
+        describe("run short examples and compare with a loop detection optimization", () => {
+            it ("should run 10 rocks", () => {
+                const chamber = new Chamber()
+                const caveSimulator = new CaveSimulator(shapes, chamber, example)
+                caveSimulator.runCaveSimulation(10)
+                expect(chamber.getFilledHeight()).toBe(17)
+                const height = loopOptimizedSimulation(shapes, example, 10)
+                expect(height).toBe(17)
+            })
+            it ("should run 100 rocks", () => {
+                const chamber = new Chamber()
+                const caveSimulator = new CaveSimulator(shapes, chamber, example)
+                caveSimulator.runCaveSimulation(100)
+                expect(chamber.getFilledHeight()).toBe(157)
+                const height = loopOptimizedSimulation(shapes, example, 100)
+                expect(height).toBe(157)
+            })
+            describe("run example with loop detection optimization", () => {
+                it ("should run 2022 rocks", () => {
+                    const height = loopOptimizedSimulation(shapes, example, 2022)
+                    expect(height).toBe(3068)
+                })
+            })
+            describe("run long example with loop detection optimization", () => {
+                it ("should run 1000_000_000_000 rocks", () => {
+                    const height = loopOptimizedSimulation(shapes, example, 1000_000_000_000)
+                    expect(height).toBe(1_514_285_714_288)
+                })
             })
         })
     })
@@ -425,14 +575,23 @@ describe("Day 17", () => {
         describe("Part 1", () => {
             it("should find solution", () => {
                 const chamber = new Chamber()
-                runCaveSimulation(shapes, chamber, 2022, input)
+                const caveSimulator = new CaveSimulator(shapes, chamber, input)
+                caveSimulator.runCaveSimulation(2022)
                 expect(chamber.getFilledHeight()).toBeGreaterThan(3068)
                 expect(chamber.getFilledHeight()).toBeLessThan(3135)
                 expect(chamber.getFilledHeight()).toBe(3119)
             })
+            it ("should find solution also with loop optimization", () => {
+                const height = loopOptimizedSimulation(shapes, input, 2022)
+                expect(height).toBe(3119)
+            })
         })
         describe("Part 2", () => {
             it("should find solution", () => {
+                const height = loopOptimizedSimulation(shapes, input, 1000_000_000_000)
+                expect(height).toBeLessThan(1537175792522)
+                expect(height).toBeLessThan(1537175792515)
+                expect(height).toBe(1536994219669)
             })
         })
     })
