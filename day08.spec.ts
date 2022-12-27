@@ -32,7 +32,7 @@ export class Coordinates2 {
         return new Coordinates2(this.x + coord.x, this.y + coord.y)
     }
 
-    closeBy(coord: Coordinates2): boolean {
+    isCloseBy(coord: Coordinates2): boolean {
         return Math.abs(this.x - coord.x) <=1 && Math.abs(this.y - coord.y) <= 1
     }
     toString() { // overwrite toString to have a proper hash function for Set<Coordinates2>

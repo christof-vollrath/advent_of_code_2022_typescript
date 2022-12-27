@@ -69,7 +69,7 @@ function calculateDeltaTail(head: Coordinates2, tail: Coordinates2) {
 function moveOneStep(dir: Direction, rope: Rope, tailPath?: Coordinates2[]) {
     const deltaHead = calculateDelta(dir)
     rope.head = rope.head.add(deltaHead)
-    if (! rope.tail.closeBy(rope.head)) { // have to move tail
+    if (! rope.tail.isCloseBy(rope.head)) { // have to move tail
         const deltaTail = calculateDeltaTail(rope.head, rope.tail)
         rope.tail = rope.tail.add(deltaTail)
     }
@@ -111,7 +111,7 @@ function moveLongRopeOneStep(dir: Direction, rope: LongRope, tailPath?: Coordina
             prevCoord = moved
         } else {
             let moved = coord
-            if (! coord.closeBy(prevCoord)) {
+            if (! coord.isCloseBy(prevCoord)) {
                 const deltaTail = calculateDeltaTail(prevCoord, coord)
                 moved = coord.add(deltaTail)
             }
@@ -160,14 +160,14 @@ describe("Day 9", () => {
 
     describe("close by of coordinates", () => {
         it("should be close by", () => {
-            expect(new Coordinates2(1, 1).closeBy(new Coordinates2(1, 1))).toBeTruthy()
-            expect(new Coordinates2(0, 1).closeBy(new Coordinates2(1, 0))).toBeTruthy()
-            expect(new Coordinates2(0, 1).closeBy(new Coordinates2(-1, 1))).toBeTruthy()
+            expect(new Coordinates2(1, 1).isCloseBy(new Coordinates2(1, 1))).toBeTruthy()
+            expect(new Coordinates2(0, 1).isCloseBy(new Coordinates2(1, 0))).toBeTruthy()
+            expect(new Coordinates2(0, 1).isCloseBy(new Coordinates2(-1, 1))).toBeTruthy()
         })
         it("should not be close by", () => {
-            expect(new Coordinates2(1, 2).closeBy(new Coordinates2(1, 0))).toBeFalsy()
-            expect(new Coordinates2(0, 0).closeBy(new Coordinates2(2, 2))).toBeFalsy()
-            expect(new Coordinates2(1, -1).closeBy(new Coordinates2(-1, 1))).toBeFalsy()
+            expect(new Coordinates2(1, 2).isCloseBy(new Coordinates2(1, 0))).toBeFalsy()
+            expect(new Coordinates2(0, 0).isCloseBy(new Coordinates2(2, 2))).toBeFalsy()
+            expect(new Coordinates2(1, -1).isCloseBy(new Coordinates2(-1, 1))).toBeFalsy()
         })
     })
     describe("Example", () => {
