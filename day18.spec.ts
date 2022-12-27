@@ -70,6 +70,65 @@ function countNotConnectedSides(coordSet: Set<Coordinates3>) {
     return result;
 }
 
+function findCorners(coordinates3: Set<Coordinates3>) {
+    let minX = Number.MAX_VALUE, minY = Number.MAX_VALUE, minZ = Number.MAX_VALUE;
+    let maxX = 0, maxY = 0, maxZ = 0;
+    for (const coord of coordinates3.toArray()) {
+        if (coord.x < minX) minX = coord.x
+        if (coord.y < minY) minY = coord.y
+        if (coord.z < minZ) minZ = coord.z
+        if (coord.x > maxX) maxX = coord.x
+        if (coord.y > maxY) maxY = coord.y
+        if (coord.z > maxZ) maxZ = coord.z
+    }
+    return { upperCorner: new Coordinates3(minX, minY, minZ), lowerCorner: new Coordinates3(maxX, maxY, maxZ) }
+}
+
+function surroundingCube(coordinates3: Set<Coordinates3>) {
+    const { upperCorner, lowerCorner } = findCorners(coordinates3)
+    return  {
+        upperCorner: new Coordinates3(upperCorner.x - 1, upperCorner.y - 1, upperCorner.z - 1),
+        lowerCorner: new Coordinates3(lowerCorner.x + 1, lowerCorner.y + 1, lowerCorner.z + 1)
+    }
+
+}
+
+function findOutSideCubes(upperCorner: Coordinates3, lowerCorner: Coordinates3, vulcanCubes: Set<Coordinates3>) {
+    let resultSet = new Set<Coordinates3>()
+    resultSet.add(upperCorner)
+    let currentSet = new Set<Coordinates3>()
+    currentSet.add(upperCorner) // starting from upper corner
+    while (currentSet.size() > 0) {
+        let nextSet = new Set<Coordinates3>()
+        for (const current of currentSet.toArray()) {
+            const closeBy = current.closeBy()
+            for (const next of closeBy) {
+                if (next.x >= upperCorner.x && next.y >= upperCorner.y && next.z >= upperCorner.z
+                    && next.x <= lowerCorner.x && next.y <= lowerCorner.y && next.z <= lowerCorner.z) {
+                    if (!resultSet.contains(next) && !vulcanCubes.contains(next)) {
+                        nextSet.add(next)
+                        resultSet.add(next)
+                    }
+                }
+            }
+        }
+        currentSet = nextSet
+    }
+    return resultSet
+}
+
+function countExternalSides(coordSet: Set<Coordinates3>) {
+    const { upperCorner , lowerCorner }  = surroundingCube(coordSet)
+    const outsideCubes = findOutSideCubes(upperCorner, lowerCorner, coordSet)
+
+    let result = 0
+    for (const coord of coordSet.toArray()) {
+        const closeBy = coord.closeBy()
+        result += closeBy.filter(closeBy => outsideCubes.contains(closeBy)).length
+    }
+    return result;
+}
+
 describe("Day 18", () => {
 
     const example = `
@@ -92,13 +151,13 @@ describe("Day 18", () => {
         it("should have parsed 13 lines", () => {
             expect(lines.length).toBe(13)
         })
-        const coords = parseCoordinates3(lines)
+        const cubeCoords = parseCoordinates3(lines)
         it("should have parsed coords", () => {
-            expect(coords.length).toBe(13)
-            expect(coords[12]).toStrictEqual(new Coordinates3(2, 3, 5))
+            expect(cubeCoords.length).toBe(13)
+            expect(cubeCoords[12]).toStrictEqual(new Coordinates3(2, 3, 5))
         })
         it ("should create a set of cubes", () => {
-            const set = createCubeSet(coords)
+            const set = createCubeSet(cubeCoords)
             expect(set.contains(new Coordinates3(2, 3, 5))).toBeTruthy()
             expect(set.contains(new Coordinates3(123, 456, 789))).toBeFalsy()
         })
@@ -116,10 +175,52 @@ describe("Day 18", () => {
                 ]))).toBe(10)
             })
         })
-        describe("solve example", () => {
+        describe("solve example part 1", () => {
             it("should sum number of not connected sides for all cubes in example", () => {
-                const cubeSet = createCubeSet(coords)
+                const cubeSet = createCubeSet(cubeCoords)
                 expect(countNotConnectedSides(cubeSet)).toBe(64)
+            })
+        })
+        describe("find corners and surrounding cube", () => {
+            it("should find corners of example cube", () => {
+                const { upperCorner, lowerCorner } = findCorners(createCubeSet(cubeCoords))
+                expect(upperCorner).toStrictEqual(new Coordinates3(1, 1, 1))
+                expect(lowerCorner).toStrictEqual(new Coordinates3(3, 3, 6))
+            })
+            it("should create surrounding cube", () => {
+                const { upperCorner, lowerCorner } = surroundingCube(createCubeSet(cubeCoords))
+                expect(upperCorner).toStrictEqual(new Coordinates3(0, 0, 0))
+                expect(lowerCorner).toStrictEqual(new Coordinates3(4, 4, 7))
+            })
+        })
+        describe("outside cubes, e.g. cubes which are connected to the outside", () => {
+            it ("should find all 8 outside cubes when no lava cube is given", () => {
+                const upperCorner = new Coordinates3(0, 0, 0), lowerCorner = new Coordinates3(1, 1, 1)
+                const outsideCubes = findOutSideCubes(upperCorner, lowerCorner, createCubeSet([]))
+                expect(outsideCubes.size()).toBe(8)
+            })
+            it ("should find all 26 outside cubes when one lava cube is given", () => {
+                const cubeSet = createCubeSet([new Coordinates3(1, 1, 1)])
+                const { upperCorner , lowerCorner }  = surroundingCube(cubeSet)
+                const outsideCubes = findOutSideCubes(upperCorner, lowerCorner, cubeSet)
+                expect(outsideCubes.size()).toBe(26)
+            })
+            it ("when applied for the example, the trapped cube should not be part but all others should", () => {
+                const cubeSet = createCubeSet(cubeCoords)
+                const { upperCorner , lowerCorner }  = surroundingCube(cubeSet)
+                const outsideCubes = findOutSideCubes(upperCorner, lowerCorner, cubeSet)
+                for(const outsideCube of outsideCubes.toArray()) expect(cubeSet.contains(outsideCube)).toBeFalsy()
+                for(const cube of cubeCoords) expect(outsideCubes.contains(cube)).toBeFalsy()
+                expect(outsideCubes.contains(new Coordinates3(2, 2, 5))).toBeFalsy() // trapped cube
+                const nrOfAllCubes = (lowerCorner.x - upperCorner.x + 1) * (lowerCorner.y - upperCorner.y + 1) * (lowerCorner.z - upperCorner.z + 1)
+                const nrRemainingCubes = nrOfAllCubes - outsideCubes.size() - cubeSet.size()
+                expect(nrRemainingCubes).toBe(1) // the only trapped cube
+            })
+        })
+        describe("external surface area", () => {
+            it("should calculate external surface for example", () => {
+                const externalSurfaceArea = countExternalSides(createCubeSet(cubeCoords))
+                expect(externalSurfaceArea).toBe(58)
             })
         })
     })
@@ -127,19 +228,29 @@ describe("Day 18", () => {
     describe("Exercise", () => {
         const input = readFileInput("inputDay18.txt")
         const lines = parseLines(input)
-        const coords = parseCoordinates3(lines)
+        const cubeCoords = parseCoordinates3(lines)
         it("should have parsed lines and coords", () => {
             expect(lines.length).toBe(2781)
-            expect(coords.length).toBe(2781)
+            expect(cubeCoords.length).toBe(2781)
         })
         describe("Part 1", () => {
             it("should find solution", () => {
-                const cubeSet = createCubeSet(coords)
+                const cubeSet = createCubeSet(cubeCoords)
                 expect(countNotConnectedSides(cubeSet)).toBe(4500)
             })
         })
         describe("Part 2", () => {
+            describe("how big is the outside of the cubes", () => {
+                it("should create surrounding cube", () => {
+                    const { upperCorner, lowerCorner } = surroundingCube(createCubeSet(cubeCoords))
+                    expect(upperCorner).toStrictEqual(new Coordinates3(0, -1, -1))
+                    expect(lowerCorner).toStrictEqual(new Coordinates3(22, 22, 22))
+                })
+
+            })
             it("should find solution", () => {
+                const externalSurfaceArea = countExternalSides(createCubeSet(cubeCoords))
+                expect(externalSurfaceArea).toBe(2558)
             })
         })
     })
