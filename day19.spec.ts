@@ -2,6 +2,7 @@
 
 import {readFileSync} from "fs"
 import {Dictionary} from "typescript-collections";
+import {calculateSum} from "./day02.spec";
 
 export function readFileInput(path: string) {
     return readFileSync(path, 'utf8')
@@ -112,16 +113,61 @@ function enoughResources(blueprint: Blueprint, state: RobotState, action: string
     return true
 }
 
-function findPossibleActions(blueprint: Blueprint, state: RobotState) {
+function findPossibleActions(blueprint: Blueprint, maxMinutes: number, minute: number, state: RobotState) {
+    function guessActions(): Action[] {
+        if (minute < 18) return Object.values(Action)
+        else {
+            // Optimization, don't build robots which are no more useful
+            const result: Action[] = [Action.doNothing]
+            if (minute <= 19) result.push(Action.buildClayRobot)
+            if (minute <= 21) result.push(Action.buildObsidianRobot)
+            if (minute <= 23) result.push(Action.buildGeodeRobot)
+            return result
+        }
+    }
     let result: Action[] = []
-    for (const action of Object.values(Action)) {
+    for (const action of guessActions()) {
         if (action === Action.doNothing || enoughResources(blueprint, state, action)) result.push(action)
     }
     return result
 }
 
+type ActionsAndState = { finalState: RobotState, actions: Action[] }
+
+function filterBadRobots(nrMinutes: number, blueprint: Blueprint, resourceName: string, minute: number, actionsAndStates: ActionsAndState[]) {
+    const bestGeodeNr = Math.max(...actionsAndStates.map(actionsAndState => actionsAndState.finalState.nrResources["geode"] ?? 0))
+    console.log("bestGeodeNr so far: " + bestGeodeNr)
+    // when robots can for sure not become any better than what we already have they can be ignored
+    const filtered = actionsAndStates.filter(actionsAndState => {
+        if (resourceName === "ore") return true // no upper bound for ore
+        const upperLimit = estimateUpperBoundState(actionsAndState.finalState, blueprint, nrMinutes, minute).nrResources[resourceName] ?? 0
+        //console.log(`upperLimit: ${upperLimit} bestGeodeNr: ${bestGeodeNr}`)
+        return upperLimit > bestGeodeNr
+    })
+    console.log(`filtering bad paths before: ${actionsAndStates.length} after: ${filtered.length}`)
+    return filtered
+}
+
+function filterMaxRobots(maxRobots: { [p: string]: number }, actionsAndStates: ActionsAndState[]) {
+    function nrRobotsTooBig(maxRobots: { [p: string]: number }, actionsAndState: ActionsAndState) {
+        const currentNrRobots = actionsAndState.finalState.nrRobots
+        for (const robotName of Object.values(Action)) {
+            const maxRobotNr = maxRobots[robotName]
+            if (maxRobotNr === undefined) continue
+            const robotNr = currentNrRobots[robotName]
+            if (robotNr === undefined) continue
+            if (robotNr > maxRobotNr) return true // we don't need to have more robots than needed
+        }
+        return false;
+    }
+    const filtered = actionsAndStates.filter(actionsAndState => !nrRobotsTooBig(maxRobots, actionsAndState))
+    console.log(`filtering paths max before: ${actionsAndStates.length} after: ${filtered.length}`)
+    if (actionsAndStates.length === 2482)
+        console.log("20")
+    return filtered
+}
+
 function findBestPlan(blueprint: Blueprint, nrMinutes: number, resourceName: string) {
-    type ActionsAndState = { finalState: RobotState, actions: Action[] }
     function findBestActions(actionsAndStates: ActionsAndState[], resourceName: string) {
         let best = actionsAndStates[0]
         for (let i = 1; i < actionsAndStates.length; i++) {
@@ -132,14 +178,15 @@ function findBestPlan(blueprint: Blueprint, nrMinutes: number, resourceName: str
         }
         return best
     }
+    const maxRobots = findMaxRobots(blueprint)
     let actionsAndStates: ActionsAndState[] = []
     const initialState = executeActions(blueprint, [])
     actionsAndStates.push({ finalState: initialState, actions: []})
-    for (let i = 1; i <= nrMinutes; i++) {
+    for (let minute = 1; minute <= nrMinutes; minute++) {
         let nextActionsAndStates = []
-        console.log(`findBestPlan minute=${i} paths=${actionsAndStates.length}`)
+        console.log(`findBestPlan minute=${minute} paths=${actionsAndStates.length}`)
         for (const actionsAndState of actionsAndStates) {
-            const possibleActions = findPossibleActions(blueprint, actionsAndState.finalState)
+            const possibleActions = findPossibleActions(blueprint, nrMinutes, minute, actionsAndState.finalState)
             for (const nextAction of possibleActions) {
                 const nextState = JSON.parse(JSON.stringify(actionsAndState.finalState))
                 executeAction(blueprint, nextState, nextAction)
@@ -149,9 +196,156 @@ function findBestPlan(blueprint: Blueprint, nrMinutes: number, resourceName: str
                 nextActionsAndStates.push(nextActionsAndState)
             }
         }
-        actionsAndStates = nextActionsAndStates
+        actionsAndStates = compressActionsAndStates(filterMaxRobots(maxRobots, filterBadRobots(nrMinutes, blueprint, resourceName, minute, nextActionsAndStates)))
+        if (actionsAndStates.length <= 10) {
+            // debug console
+            console.log(`minute: ${minute}`)
+            console.log(actionsAndStates.map(actionsAndState => actionsAndState.actions.join(" ")).join("\n"))
+        }
     }
     return findBestActions(actionsAndStates, resourceName)
+}
+
+function isBetter(state1: RobotState, state2: RobotState) {
+    let state1Better = false
+    let state2Better = false
+    for (const robotName of Object.values(Action)) {
+        if (state1.nrRobots[robotName] === undefined && state2.nrRobots[robotName] !== undefined)
+            state2Better = true
+        else if (state1.nrRobots[robotName] !== undefined && state2.nrRobots[robotName] === undefined)
+            state1Better = true
+        else if (state1.nrRobots[robotName] !== undefined && state2.nrRobots[robotName] !== undefined) {
+            if (state1.nrRobots[robotName] < state2.nrRobots[robotName])
+                state2Better = true
+            if (state1.nrRobots[robotName] > state2.nrRobots[robotName])
+                state1Better = true
+        }
+    }
+    if (state1Better && state2Better) return false // mixed
+    for (const resourceName of Object.values(Action)) {
+        if (state1.nrResources[resourceName] === undefined && state2.nrResources[resourceName] !== undefined)
+            state2Better = true
+        else if (state1.nrResources[resourceName] !== undefined && state2.nrResources[resourceName] === undefined)
+            state1Better = true
+        else if (state1.nrResources[resourceName] !== undefined && state2.nrResources[resourceName] !== undefined) {
+            if (state1.nrResources[resourceName] < state2.nrResources[resourceName])
+                state2Better = true
+            if (state1.nrResources[resourceName] > state2.nrResources[resourceName])
+                state1Better = true
+        }
+    }
+    return state1Better && ! state2Better
+}
+
+function isEqual(state1: RobotState, state2: RobotState) {
+
+    for (const robotName of Object.values(Action)) {
+        if (state1.nrRobots[robotName] === undefined && state2.nrRobots[robotName] !== undefined)
+            return false
+        else if (state1.nrRobots[robotName] !== undefined && state2.nrRobots[robotName] === undefined)
+            return false
+        else if (state1.nrRobots[robotName] !== undefined && state2.nrRobots[robotName] !== undefined) {
+            if (state1.nrRobots[robotName] !== state2.nrRobots[robotName])
+                return false
+        }
+    }
+    for (const resourceName of Object.values(Action)) {
+        if (state1.nrResources[resourceName] === undefined && state2.nrResources[resourceName] !== undefined)
+            return false
+        else if (state1.nrResources[resourceName] !== undefined && state2.nrResources[resourceName] === undefined)
+            return false
+        else if (state1.nrResources[resourceName] !== undefined && state2.nrResources[resourceName] !== undefined) {
+            if (state1.nrResources[resourceName] !== state2.nrResources[resourceName])
+                return false
+        }
+    }
+    return true
+}
+
+function compressActionsAndStates(actionsAndStates: ActionsAndState[]) {
+    const result: ActionsAndState[] = []
+    for (let i1 = 0; i1 < actionsAndStates.length; i1++) {
+        const currentActionsAndState = actionsAndStates[i1]
+        let betterFound = false
+        for (let i2 = 0; i2 < actionsAndStates.length; i2++) {
+            if (i2 !== i1) {
+                if (isBetter(actionsAndStates[i2].finalState, currentActionsAndState.finalState))
+                    betterFound = true
+            }
+        }
+        if (! betterFound) {
+            // add to results unless results already contains an equal good state
+            // (a better one can not be found, because than this one would not be selected before
+            let equalFound = false
+            for (const actionsAndState of result) {
+                if (isEqual(actionsAndState.finalState, currentActionsAndState.finalState)) {
+                    equalFound = true; break
+                }
+            }
+            if (!equalFound) result.push(currentActionsAndState)
+        }
+    }
+    return result
+}
+
+function estimateUpperBoundState(state: RobotState, blueprint: Blueprint, maxMinutes: number, minute: number) {
+    const currState = JSON.parse(JSON.stringify(state))
+    for (let i = minute; i <= maxMinutes; i++) {
+        // Check if something can be produced only based on the main ingredient because main ingredient are unique per robot
+        for (const robotName of Object.values(Action)) {
+            if (robotName !== Action.doNothing && robotName !== Action.buildOreRobot) { // actions are also the names of the robots, ignore ore
+                const nrClayNeededForObsidianRobot = blueprint.partsLists.getValue("obsidian")?.partsList.getValue("clay")
+                const nrObsidianNeededForGeodeRobot = blueprint.partsLists.getValue("geode")?.partsList.getValue("obsidian")
+                currState.nrRobots["clay"] = (currState.nrRobots["clay"] ?? 0) + 1 // assume can always build clay robots because ore is ignored
+                if (nrClayNeededForObsidianRobot && currState.nrResources["clay"] && currState.nrResources["clay"] >= nrClayNeededForObsidianRobot) {
+                    currState.nrRobots["obsidian"] = (currState.nrRobots["obsidian"] ?? 0) + 1
+                    currState.nrResources["clay"] = currState.nrResources["clay"] - nrClayNeededForObsidianRobot
+                }
+                if (nrObsidianNeededForGeodeRobot && currState.nrResources["obsidian"] && currState.nrResources["obsidian"] >= nrObsidianNeededForGeodeRobot) {
+                    currState.nrRobots["geode"] = (currState.nrRobots["geode"] ?? 0) + 1
+                    currState.nrResources["obsidian"] = currState.nrResources["obsidian"] - nrObsidianNeededForGeodeRobot
+                }
+            }
+        }
+        // create resources
+        //console.log("after creating robots: " + JSON.stringify(currState))
+        for (const robotName of Object.values(Action)) {
+            if (robotName !== Action.doNothing && robotName !== Action.buildOreRobot) { // actions are also the names of the robots
+                const nrRobots = currState.nrRobots[robotName]
+                const nrResources = currState.nrResources[robotName]
+                if (nrRobots) {
+                    currState.nrResources[robotName] = (nrResources ?? 0) + nrRobots // every robot produces resources
+                }
+            }
+        }
+        //console.log("after creating resources: " + JSON.stringify(currState))
+    }
+    return currState
+}
+
+/*
+There is a maximal number of robots to produce for each blueprint.
+Since in every minute all robots produce, and in one minute only one robot can be created,
+it makes no sense to produce more resources than can be used to produce a new robot.
+For each resource the maximum production number is the maximum of needs for this resource in the blueprint.
+ */
+function findMaxRobots(blueprint: Blueprint) {
+    const result: { [id: string]: number } = {}
+    for (const robotName of Object.values(Action)) {
+        if (robotName !== "nothing"  && robotName !== "geode") {
+            const maxResourceNrs = blueprint.partsLists.values().map(partsList => partsList.partsList.getValue(robotName) ?? 0)
+            result[robotName] = Math.max(...maxResourceNrs)
+        }
+    }
+    return result
+}
+
+function findQuality(blueprintId: number, blueprint: Blueprint, maxMinutes: number, resourceName: string) {
+    const actionsAndState = findBestPlan(blueprint, maxMinutes, resourceName)
+    const nrResources = actionsAndState?.finalState?.nrResources[resourceName] ?? 0
+    const result = nrResources * blueprintId
+    console.log(`----blueprintId=${blueprintId} nrResources=${nrResources} result=${result}`)
+    return result
 }
 
 describe("Day 19", () => {
@@ -247,24 +441,125 @@ Blueprint 2: Each ore robot costs 2 ore. Each clay robot costs 3 ore. Each obsid
         describe("find actions", () => {
             it("should find only nothing action when no ore is there", () => {
                 const state: RobotState = { nrRobots: { ore: 1}, nrResources: {} }
-                const possibleActions = findPossibleActions(blueprints[0], state)
+                const possibleActions = findPossibleActions(blueprints[0], 24, 1, state)
                 expect(possibleActions).toStrictEqual([Action.doNothing])
             })
             it("should find buildClay action when there are two pieces of ore", () => {
                 const state: RobotState = { nrRobots: { ore: 1}, nrResources: { ore: 2} }
-                const possibleActions = findPossibleActions(blueprints[0], state)
+                const possibleActions = findPossibleActions(blueprints[0], 24, 1, state)
                 expect(possibleActions).toStrictEqual([Action.doNothing, Action.buildClayRobot])
             })
             it("should find buildClay, buildOreAction action when there are four pieces of ore", () => {
                 const state: RobotState = { nrRobots: { ore: 1}, nrResources: { ore: 4} }
-                const possibleActions = findPossibleActions(blueprints[0], state)
+                const possibleActions = findPossibleActions(blueprints[0], 24, 1, state)
                 expect(possibleActions).toStrictEqual([Action.doNothing, Action.buildOreRobot, Action.buildClayRobot])
             })
             it("should find buildClay, buildOreAction, buildGeode action when there are four pieces of ore and twelve of obsidian", () => {
                 const state: RobotState = { nrRobots: { ore: 1}, nrResources: { ore: 4, obsidian: 12} }
-                const possibleActions = findPossibleActions(blueprints[0], state)
+                const possibleActions = findPossibleActions(blueprints[0], 24, 1, state)
                 expect(possibleActions).toStrictEqual([Action.doNothing, Action.buildOreRobot, Action.buildClayRobot, Action.buildGeodeRobot])
             })
+            it("should find only do nothing when last minute", () => {
+                const state: RobotState = { nrRobots: { ore: 1}, nrResources: { ore: 4, obsidian: 12} }
+                const possibleActions = findPossibleActions(blueprints[0], 24, 24, state)
+                expect(possibleActions).toStrictEqual([Action.doNothing])
+            })
+            it("should build only geode two minutes before end", () => {
+                const state: RobotState = { nrRobots: { ore: 1}, nrResources: { ore: 4, obsidian: 12} }
+                const possibleActions = findPossibleActions(blueprints[0], 24, 22, state)
+                expect(possibleActions).toStrictEqual([Action.doNothing, Action.buildGeodeRobot])
+            })
+        })
+        describe("compare state isBetter", () => {
+            it("should return true for compare empty states", () => {
+                expect(isBetter({ nrRobots: {}, nrResources: {} }, { nrRobots: {}, nrResources: {} })).toBeFalsy()
+            })
+            it("should return true when state 2 is better", () => {
+                expect(isBetter({ nrRobots: {}, nrResources: {} }, { nrRobots: {ore: 1}, nrResources: {} })).toBeFalsy()
+                expect(isBetter({ nrRobots: {}, nrResources: {} }, { nrRobots: {}, nrResources: {clay: 1} })).toBeFalsy()
+                expect(isBetter({ nrRobots: {ore: 1}, nrResources: {} }, { nrRobots: {ore: 2}, nrResources: {} })).toBeFalsy()
+                expect(isBetter({ nrRobots: {}, nrResources: {clay: 1} }, { nrRobots: {}, nrResources: {clay: 3} })).toBeFalsy()
+                expect(isBetter({ nrRobots: {ore: 1}, nrResources: {clay: 1} }, { nrRobots: {ore: 2}, nrResources: {clay: 1} })).toBeFalsy()
+                expect(isBetter({ nrRobots: {ore: 1}, nrResources: {clay: 1} }, { nrRobots: {ore: 1}, nrResources: {clay: 3} })).toBeFalsy()
+            })
+            it("should return false when state 1 is better", () => {
+                expect(isBetter({ nrRobots: {ore: 1}, nrResources: {} }, { nrRobots: {}, nrResources: {} })).toBeTruthy()
+                expect(isBetter({ nrRobots: {}, nrResources: {clay: 1} }, { nrRobots: {}, nrResources: {} })).toBeTruthy()
+                expect(isBetter({ nrRobots: {ore: 2}, nrResources: {} }, { nrRobots: {ore: 1}, nrResources: {} } )).toBeTruthy()
+                expect(isBetter({ nrRobots: {}, nrResources: {clay: 3} }, { nrRobots: {}, nrResources: {clay: 1} })).toBeTruthy()
+                expect(isBetter({ nrRobots: {ore: 2}, nrResources: {clay: 1} }, { nrRobots: {ore: 1}, nrResources: {clay: 1} } )).toBeTruthy()
+                expect(isBetter({ nrRobots: {ore: 1}, nrResources: {clay: 3} }, { nrRobots: {ore: 1}, nrResources: {clay: 1} })).toBeTruthy()
+            })
+            it("should return false when mixed", () => {
+                expect(isBetter({ nrRobots: {ore: 1}, nrResources: {} }, { nrRobots: {}, nrResources: {clay: 1} })).toBeFalsy()
+                expect(isBetter({ nrRobots: {}, nrResources: {clay: 1} }, { nrRobots: {}, nrResources: {ore: 1} })).toBeFalsy()
+            })
+            it("should return false when equal", () => {
+                expect(isBetter({ nrRobots: {ore: 1}, nrResources: {clay: 2, obsidian: 3} }, { nrRobots: {ore: 1}, nrResources: {clay: 2, obsidian: 3} })).toBeFalsy()
+            })
+        })
+        describe("compare states equal", () => {
+            it("should return true for compare empty states", () => {
+                expect(isEqual({ nrRobots: {}, nrResources: {} }, { nrRobots: {}, nrResources: {} })).toBeTruthy()
+            })
+            it("should return true when state 2 is better", () => {
+                expect(isEqual({ nrRobots: {}, nrResources: {} }, { nrRobots: {ore: 1}, nrResources: {} })).toBeFalsy()
+                expect(isEqual({ nrRobots: {}, nrResources: {} }, { nrRobots: {}, nrResources: {clay: 1} })).toBeFalsy()
+                expect(isEqual({ nrRobots: {ore: 1}, nrResources: {} }, { nrRobots: {ore: 2}, nrResources: {} })).toBeFalsy()
+                expect(isEqual({ nrRobots: {}, nrResources: {clay: 1} }, { nrRobots: {}, nrResources: {clay: 3} })).toBeFalsy()
+                expect(isEqual({ nrRobots: {ore: 1}, nrResources: {clay: 1} }, { nrRobots: {ore: 2}, nrResources: {clay: 1} })).toBeFalsy()
+                expect(isEqual({ nrRobots: {ore: 1}, nrResources: {clay: 1} }, { nrRobots: {ore: 1}, nrResources: {clay: 3} })).toBeFalsy()
+            })
+            it("should return false when state 1 is better", () => {
+                expect(isEqual({ nrRobots: {ore: 1}, nrResources: {} }, { nrRobots: {}, nrResources: {} })).toBeFalsy()
+                expect(isEqual({ nrRobots: {}, nrResources: {clay: 1} }, { nrRobots: {}, nrResources: {} })).toBeFalsy()
+                expect(isEqual({ nrRobots: {ore: 2}, nrResources: {} }, { nrRobots: {ore: 1}, nrResources: {} } )).toBeFalsy()
+                expect(isEqual({ nrRobots: {}, nrResources: {clay: 3} }, { nrRobots: {}, nrResources: {clay: 1} })).toBeFalsy()
+                expect(isEqual({ nrRobots: {ore: 2}, nrResources: {clay: 1} }, { nrRobots: {ore: 1}, nrResources: {clay: 1} } )).toBeFalsy()
+                expect(isEqual({ nrRobots: {ore: 1}, nrResources: {clay: 3} }, { nrRobots: {ore: 1}, nrResources: {clay: 1} })).toBeFalsy()
+            })
+            it("should return false when mixed", () => {
+                expect(isEqual({ nrRobots: {ore: 1}, nrResources: {} }, { nrRobots: {}, nrResources: {clay: 1} })).toBeFalsy()
+                expect(isEqual({ nrRobots: {}, nrResources: {clay: 1} }, { nrRobots: {}, nrResources: {ore: 1} })).toBeFalsy()
+            })
+            it("should return true when equal", () => {
+                expect(isEqual({ nrRobots: {ore: 1}, nrResources: {clay: 2, obsidian: 3} }, { nrRobots: {ore: 1}, nrResources: {clay: 2, obsidian: 3} })).toBeTruthy()
+            })
+        })
+        describe("compress ActionsAndStates", () => {
+            const actionsAndStates: ActionsAndState[] = [
+                { actions: [], finalState: { nrRobots: {}, nrResources: {} }},
+                { actions: [], finalState: { nrRobots: {ore: 1}, nrResources: {} }},
+                { actions: [], finalState: { nrRobots: {}, nrResources: {clay: 1} }},
+                { actions: [], finalState: { nrRobots: {ore: 1}, nrResources: {obsidian: 2} }},
+                { actions: [], finalState: { nrRobots: {obsidian: 2}, nrResources: {clay: 1} }},
+                { actions: [], finalState: { nrRobots: {ore: 1, geode: 1}, nrResources: {} }},
+                { actions: [], finalState: { nrRobots: {}, nrResources: {clay: 1, geode: 1} }},
+            ]
+            const compressedActionsAndStates = compressActionsAndStates(actionsAndStates)
+            it("should have compressed data", () => {
+                expect(compressedActionsAndStates).toStrictEqual([
+                    { actions: [], finalState: { nrRobots: {ore: 1}, nrResources: {obsidian: 2} }},
+                    { actions: [], finalState: { nrRobots: {obsidian: 2}, nrResources: {clay: 1} }},
+                    { actions: [], finalState: { nrRobots: {ore: 1, geode: 1}, nrResources: {} }},
+                    { actions: [], finalState: { nrRobots: {}, nrResources: {clay: 1, geode: 1} }},
+                ])
+            })
+        })
+        describe("find max robots for a blueprint", () => {
+            it("should find the max robots for blueprint 0", () => {
+                const maxRobots = findMaxRobots(blueprints[0])
+                expect(maxRobots).toStrictEqual({
+                    ore: 4,
+                    clay: 14,
+                    obsidian: 7
+                })
+            })
+        })
+        describe("estimate upper bound for a certain state", () => {
+            const initialState = { nrRobots: { ore: 1}, nrResources: {} }
+            let upperBoundState = estimateUpperBoundState(initialState, blueprints[0], 10, 1)
+            expect(upperBoundState.nrResources["geode"]).toBe(6)
         })
         describe("find solution for some goals", () => {
             it("should need to do nothing for a time span of 1 minute, searching for ore", () => {
@@ -289,21 +584,37 @@ Blueprint 2: Each ore robot costs 2 ore. Each clay robot costs 3 ore. Each obsid
                 expect(finalState.nrRobots["clay"]).toBe(1)
                 expect(finalState.nrResources["ore"]).toBe(2)
             })
-            it("should find the best plan, searching for geode", () => {
-                const { finalState: finalState, actions: actions } = findBestPlan(blueprints[0], 24, "geode")
+            it("should find the best plan, searching for geode in example 1", () => {
+                const { finalState: finalState, actions: _ } = findBestPlan(blueprints[0], 24, "geode")
+                expect(finalState.nrResources["geode"]).toBe(9)
+            })
+            it("should find the best plan, searching for geode in example 2", () => {
+                const { finalState: finalState, actions: _ } = findBestPlan(blueprints[1], 24, "geode")
                 expect(finalState.nrResources["geode"]).toBe(12)
+            })
+        })
+        describe("solve example", () => {
+            it("should calculate quality level sum", () => {
+                const qualityLevels = blueprints.map((blueprint, index) => findQuality(index+1, blueprint, 24, "geode"))
+                const sum = calculateSum(qualityLevels, x => x)
+                expect(sum).toBe(33)
             })
         })
     })
 
     describe("Exercise", () => {
-        const input = readFileInput("inputDay18.txt")
+        const input = readFileInput("inputDay19.txt")
         const lines = parseLines(input)
-        it("should have parsed lines and coords", () => {
-            expect(lines.length).toBe(2781)
+        const blueprints = parseBlueprints(lines)
+        it("should have parsed lines and blueprints", () => {
+            expect(lines.length).toBe(30)
+            expect(blueprints.length).toBe(30)
         })
         describe("Part 1", () => {
             it("should find solution", () => {
+                const qualityLevels = blueprints.map((blueprint, index) => findQuality(index+1, blueprint, 24, "geode"))
+                const sum = calculateSum(qualityLevels, x => x)
+                expect(sum).toBe(1147)
             })
         })
         describe("Part 2", () => {
